@@ -128,3 +128,29 @@ test('streamViaFfmpeg kills the ffmpeg child when the response closes (client di
   children[0].emit('exit', null);
   await promise;
 });
+
+test('streamViaFfmpeg does not spawn a transcode fallback when the client disconnected before any bytes were sent in copy mode', async () => {
+  const res = fakeRes();
+  const children = [];
+  const spawnImpl = () => {
+    const child = fakeChild();
+    children.push(child);
+    return child;
+  };
+
+  const promise = streamViaFfmpeg({ sourceUrl: 'http://x', offsetSeconds: 10, res, spawnImpl });
+
+  // Client disconnects while still seeking in copy mode, before any output bytes.
+  res.emit('close');
+
+  assert.equal(children[0].killed, true);
+  assert.equal(children[0].killSignal, 'SIGKILL');
+
+  // The kill causes the child to exit; since no bytes were sent and mode is
+  // 'copy', this would normally trigger a transcode retry.
+  children[0].emit('exit', null);
+  await promise;
+
+  assert.equal(children.length, 1);
+  assert.equal(res.ended, true);
+});

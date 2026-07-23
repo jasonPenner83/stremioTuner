@@ -15,8 +15,10 @@ export function streamViaFfmpeg({ sourceUrl, offsetSeconds, res, spawnImpl = spa
   return new Promise((resolve) => {
     let bytesSent = false;
     let currentChild = null;
+    let clientDisconnected = false;
 
     function onResClose() {
+      clientDisconnected = true;
       if (currentChild) currentChild.kill('SIGKILL');
     }
 
@@ -45,7 +47,7 @@ export function streamViaFfmpeg({ sourceUrl, offsetSeconds, res, spawnImpl = spa
         if (settled) return;
         settled = true;
         currentChild = null;
-        if (!bytesSent && mode === 'copy') {
+        if (!bytesSent && mode === 'copy' && !clientDisconnected) {
           run('transcode');
         } else {
           res.removeListener('close', onResClose);
