@@ -1,4 +1,3 @@
-import { loadConfig } from './config.js';
 import { getAuthKey, getInstalledAddons, findAddonById, invalidateAuthKey } from './stremioAccount.js';
 import { resolveChannelSource } from './addonClient.js';
 import { generateChannelSchedule } from './generateSchedule.js';
@@ -21,7 +20,7 @@ export async function withRetries(fn, { retries = 3, delayMs = 1000, sleepImpl =
 
 export async function bootstrap({
   env = process.env,
-  loadConfigImpl = loadConfig,
+  loadConfigImpl,
   getAuthKeyImpl = getAuthKey,
   getInstalledAddonsImpl = getInstalledAddons,
   findAddonByIdImpl = findAddonById,
