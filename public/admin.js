@@ -17,6 +17,15 @@ function cssEscape(text) {
   return text.replace(/[^a-zA-Z0-9]/g, '_');
 }
 
+function escapeHtml(text) {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function showBanner(message) {
   const banner = document.getElementById('banner');
   banner.textContent = message;
@@ -32,7 +41,7 @@ async function loadChannels() {
   const body = document.getElementById('channels-body');
   body.innerHTML = channels.map((ch) => `
     <tr data-id="${ch.id}">
-      <td>${ch.name}</td>
+      <td>${escapeHtml(ch.name)}</td>
       <td>${selectHtml('mode', MODES, ch.mode)}</td>
       <td>${selectHtml('minQuality', QUALITIES, ch.minQuality)}</td>
       <td>${selectHtml('language', LANGUAGES, ch.language)}</td>
@@ -70,18 +79,18 @@ async function loadCatalogs() {
   const body = document.getElementById('catalogs-body');
   body.innerHTML = result.catalogs.map((cat) => {
     if (cat.channelId) {
-      return `<tr><td>${cat.addonName}</td><td>${cat.catalogName}</td><td>${cat.type}</td><td>Already added</td></tr>`;
+      return `<tr><td>${escapeHtml(cat.addonName)}</td><td>${escapeHtml(cat.catalogName)}</td><td>${escapeHtml(cat.type)}</td><td>Already added</td></tr>`;
     }
     const key = cssEscape(`${cat.addon}::${cat.catalog}`);
     return `
       <tr data-addon="${cat.addon}" data-catalog="${cat.catalog}" data-key="${key}">
-        <td>${cat.addonName}</td><td>${cat.catalogName}</td><td>${cat.type}</td>
+        <td>${escapeHtml(cat.addonName)}</td><td>${escapeHtml(cat.catalogName)}</td><td>${escapeHtml(cat.type)}</td>
         <td><button data-action="toggle-form">Add channel</button></td>
       </tr>
       <tr class="add-form-row">
         <td colspan="4">
           <div class="add-form" id="form-${key}">
-            <input type="text" data-field="name" placeholder="Channel name" value="${cat.catalogName}">
+            <input type="text" data-field="name" placeholder="Channel name" value="${escapeHtml(cat.catalogName)}">
             ${selectHtml('mode', MODES, 'random-start')}
             ${selectHtml('minQuality', QUALITIES, '720p')}
             ${selectHtml('language', LANGUAGES, 'en')}
