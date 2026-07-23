@@ -21,11 +21,15 @@ mimics real broadcast TV: tuning into a channel joins whatever program is
 
 ## Non-goals
 
-- No built-in torrent/magnet-to-HTTP resolution — stream addons are assumed to
-  already resolve via a debrid service (Real-Debrid/AllDebrid/etc.), returning
-  direct HTTP-playable links.
 - No multi-user support, web UI, or channel-editing UI — configuration is a
   single mounted YAML file.
+
+> Note: this doc originally listed built-in torrent/magnet-to-HTTP
+> resolution as a non-goal, assuming stream addons always resolve via a
+> debrid service themselves. That assumption didn't hold (Cinemeta has no
+> stream resource, and stream addons without a debrid key return
+> magnet-only candidates), so direct Real-Debrid resolution was added —
+> see `2026-07-23-realdebrid-resolution-design.md`.
 - No catalog auto-discovery/auto-inclusion — channels are explicitly allowlisted.
 
 ## Architecture
