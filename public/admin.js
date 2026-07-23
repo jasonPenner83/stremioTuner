@@ -62,11 +62,12 @@ async function loadChannels() {
       <td>${selectHtml('mode', MODES, ch.mode)}</td>
       <td>${selectHtml('minQuality', QUALITIES, ch.minQuality)}</td>
       <td>${selectHtml('language', LANGUAGES, ch.language)}</td>
+      <td><input type="text" data-field="streamAddon" value="${escapeHtml(ch.streamAddon || '')}" placeholder="org.stremio.torrentio.addon"></td>
       <td><input type="checkbox" data-field="enabled" ${ch.enabled ? 'checked' : ''}></td>
     </tr>
   `).join('');
 
-  body.querySelectorAll('select, input[type=checkbox]').forEach((el) => {
+  body.querySelectorAll('select, input[type=checkbox], input[type=text]').forEach((el) => {
     el.addEventListener('change', async (e) => {
       const row = e.target.closest('tr');
       const id = row.dataset.id;
@@ -104,6 +105,7 @@ function catalogRowHtml(cat) {
           ${selectHtml('mode', MODES, 'random-start')}
           ${selectHtml('minQuality', QUALITIES, '720p')}
           ${selectHtml('language', LANGUAGES, 'en')}
+          <input type="text" data-field="streamAddon" placeholder="Stream addon ID (optional, e.g. org.stremio.torrentio.addon)">
           <button data-action="submit">Save</button>
         </div>
       </td>
@@ -151,11 +153,12 @@ async function loadCatalogs() {
       const mode = formDiv.querySelector('[data-field="mode"]').value;
       const minQuality = formDiv.querySelector('[data-field="minQuality"]').value;
       const language = formDiv.querySelector('[data-field="language"]').value;
+      const streamAddon = formDiv.querySelector('[data-field="streamAddon"]').value.trim() || undefined;
       try {
         await fetchJson('/admin/channels', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ addon, catalog, name, mode, minQuality, language })
+          body: JSON.stringify({ addon, catalog, name, mode, minQuality, language, streamAddon })
         });
         hideBanner();
         await loadAll();
