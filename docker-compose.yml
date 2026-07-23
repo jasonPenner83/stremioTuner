@@ -6,6 +6,7 @@ services:
     environment:
       STREMIO_EMAIL: ${STREMIO_EMAIL}
       STREMIO_PASSWORD: ${STREMIO_PASSWORD}
+      REALDEBRID_API_KEY: ${REALDEBRID_API_KEY}
       TZ: ${TZ:-UTC}
       BASE_URL: ${BASE_URL:-http://localhost:8881}
       REFRESH_TIME: ${REFRESH_TIME:-00:00}

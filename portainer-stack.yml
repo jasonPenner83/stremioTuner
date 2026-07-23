@@ -14,6 +14,10 @@
 #   STREMIO_PASSWORD  - your Stremio account password
 #
 # Optional:
+#   REALDEBRID_API_KEY - your Real-Debrid API token; needed to resolve
+#                   magnet-only stream candidates (from stream addons without
+#                   their own debrid config) to direct playable links. If
+#                   unset, those candidates are ignored.
 #   TZ            - defaults to UTC; set to your local timezone (e.g. America/Denver)
 #                   so REFRESH_TIME means what you expect
 #   REFRESH_TIME  - defaults to 00:00; local time (per TZ) at which channel
@@ -42,6 +46,7 @@ services:
     environment:
       STREMIO_EMAIL: ${STREMIO_EMAIL}
       STREMIO_PASSWORD: ${STREMIO_PASSWORD}
+      REALDEBRID_API_KEY: ${REALDEBRID_API_KEY}
       TZ: ${TZ:-UTC}
       BASE_URL: ${BASE_URL:-http://localhost:8881}
       REFRESH_TIME: ${REFRESH_TIME:-00:00}
