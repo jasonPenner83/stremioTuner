@@ -1,4 +1,4 @@
-const QUALITY_ORDER = ['480p', '720p', '1080p', '2160p'];
+export const QUALITY_ORDER = ['480p', '720p', '1080p', '2160p'];
 
 const LANGUAGE_KEYWORDS = {
   en: ['english'],
@@ -8,6 +8,8 @@ const LANGUAGE_KEYWORDS = {
   it: ['italian', 'italiano'],
   pt: ['portuguese', 'portugues']
 };
+
+export const SUPPORTED_LANGUAGES = Object.keys(LANGUAGE_KEYWORDS);
 
 export function parseQuality(text) {
   const lower = text.toLowerCase();
