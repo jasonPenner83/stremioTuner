@@ -21,13 +21,17 @@
 #   BASE_URL      - defaults to http://localhost:8080; set to the real host:port
 #                   your IPTV player will use to reach this container if it's
 #                   not on localhost (e.g. http://192.168.1.50:8080)
+#   DATA_DIR      - defaults to /volume1/docker/stremio-tuner; the NAS host
+#                   path bind-mounted to the container's /data. Override this
+#                   if you keep container data elsewhere (e.g. a different
+#                   volume or a non-default docker/appdata share).
 #
 # Data directory (Synology):
 #   Persisted state (channels.json, auth.json, schedules/) lives on the NAS at
-#   /volume1/docker/stremio-tuner. Create that folder before first deploy;
-#   nothing else needs to be placed in it manually — once the container is
-#   running, open http://<nas-ip>:8080/ in a browser to add channels via the
-#   admin UI (no more hand-edited config file).
+#   DATA_DIR (see above), default /volume1/docker/stremio-tuner. Create that
+#   folder before first deploy; nothing else needs to be placed in it manually
+#   — once the container is running, open http://<nas-ip>:8080/ in a browser
+#   to add channels via the admin UI (no more hand-edited config file).
 
 services:
   stremio-tuner:
@@ -42,5 +46,5 @@ services:
       BASE_URL: ${BASE_URL:-http://localhost:8080}
       REFRESH_TIME: ${REFRESH_TIME:-00:00}
     volumes:
-      - /volume1/docker/stremio-tuner:/data
+      - ${DATA_DIR:-/volume1/docker/stremio-tuner}:/data
     restart: unless-stopped
