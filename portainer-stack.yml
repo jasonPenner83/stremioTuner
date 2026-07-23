@@ -14,19 +14,20 @@
 #   STREMIO_PASSWORD  - your Stremio account password
 #
 # Optional:
-#   TZ        - defaults to UTC; set to your local timezone (e.g. America/Denver)
-#               so the daily refreshTime in config.yml means what you expect
-#   BASE_URL  - defaults to http://localhost:8080; set to the real host:port
-#               your IPTV player will use to reach this container if it's
-#               not on localhost (e.g. http://192.168.1.50:8080)
+#   TZ            - defaults to UTC; set to your local timezone (e.g. America/Denver)
+#                   so REFRESH_TIME means what you expect
+#   REFRESH_TIME  - defaults to 00:00; local time (per TZ) at which channel
+#                   schedules regenerate daily
+#   BASE_URL      - defaults to http://localhost:8080; set to the real host:port
+#                   your IPTV player will use to reach this container if it's
+#                   not on localhost (e.g. http://192.168.1.50:8080)
 #
 # Data directory (Synology):
-#   Persisted state (config.yml, auth.json, schedules/) lives on the NAS at
-#   /volume1/docker/stremio-tuner, so you can edit config.yml directly via
-#   File Station / SMB instead of docker cp-ing it into a volume. Before
-#   first deploy, create that folder on the NAS and drop a config.yml in it
-#   (copy config.example.yml from this repo and edit it with your real
-#   addon id/catalog id).
+#   Persisted state (channels.json, auth.json, schedules/) lives on the NAS at
+#   /volume1/docker/stremio-tuner. Create that folder before first deploy;
+#   nothing else needs to be placed in it manually — once the container is
+#   running, open http://<nas-ip>:8080/ in a browser to add channels via the
+#   admin UI (no more hand-edited config file).
 
 services:
   stremio-tuner:
@@ -39,6 +40,7 @@ services:
       STREMIO_PASSWORD: ${STREMIO_PASSWORD}
       TZ: ${TZ:-UTC}
       BASE_URL: ${BASE_URL:-http://localhost:8080}
+      REFRESH_TIME: ${REFRESH_TIME:-00:00}
     volumes:
       - /volume1/docker/stremio-tuner:/data
     restart: unless-stopped

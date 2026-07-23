@@ -8,6 +8,7 @@ services:
       STREMIO_PASSWORD: ${STREMIO_PASSWORD}
       TZ: ${TZ:-UTC}
       BASE_URL: ${BASE_URL:-http://localhost:8080}
+      REFRESH_TIME: ${REFRESH_TIME:-00:00}
     volumes:
       - ./data:/data
     restart: unless-stopped
