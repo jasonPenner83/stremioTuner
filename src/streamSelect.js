@@ -53,11 +53,12 @@ function maxByPeers(candidates) {
 export function selectStream(streams, { minQuality, language }) {
   const minRank = qualityRank(minQuality);
   const parsed = streams
-    .filter((s) => !!s.url)
+    .filter((s) => !!s.url || !!s.infoHash)
     .map((s) => {
       const text = `${s.title || ''} ${s.name || ''}`;
       return {
         url: s.url,
+        infoHash: s.infoHash,
         quality: parseQuality(text),
         peers: parsePeers(text),
         languageOk: matchesLanguage(text, language)

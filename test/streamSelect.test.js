@@ -75,3 +75,30 @@ test('selectStream ignores candidates without a url', () => {
   const result = selectStream(streams, { minQuality: '720p', language: 'en' });
   assert.equal(result.url, 'http://a');
 });
+
+test('selectStream accepts magnet-only candidates (infoHash, no url) alongside url candidates', () => {
+  const streams = [
+    { title: '1080p 👤 5', infoHash: 'abc123' },
+    { title: '1080p 👤 50', url: 'http://b' }
+  ];
+  const result = selectStream(streams, { minQuality: '1080p', language: 'en' });
+  assert.equal(result.url, 'http://b');
+});
+
+test('selectStream returns infoHash on the winning candidate when it has no url', () => {
+  const streams = [
+    { title: '1080p 👤 999', infoHash: 'abc123' }
+  ];
+  const result = selectStream(streams, { minQuality: '1080p', language: 'en' });
+  assert.equal(result.url, undefined);
+  assert.equal(result.infoHash, 'abc123');
+});
+
+test('selectStream ignores candidates with neither url nor infoHash', () => {
+  const streams = [
+    { title: '1080p 👤 999' },
+    { title: '1080p 👤 5', infoHash: 'abc123' }
+  ];
+  const result = selectStream(streams, { minQuality: '720p', language: 'en' });
+  assert.equal(result.infoHash, 'abc123');
+});
