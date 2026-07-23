@@ -21,11 +21,7 @@ export function streamViaFfmpeg({ sourceUrl, offsetSeconds, res, spawnImpl = spa
 
       child.stdout.on('data', (chunk) => {
         bytesSent = true;
-        // Buffers round-trip losslessly through 'latin1' (unlike the default
-        // utf8 decoding, which would corrupt arbitrary binary MPEG-TS bytes).
-        // Passing the matching encoding to res.write() reproduces the exact
-        // original bytes on the wire.
-        res.write(chunk.toString('latin1'), 'latin1');
+        res.write(chunk);
       });
 
       child.stderr.on('data', (chunk) => {

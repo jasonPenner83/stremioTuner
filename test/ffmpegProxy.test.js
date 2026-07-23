@@ -52,7 +52,7 @@ test('streamViaFfmpeg pipes copy-mode output straight through on success', async
   await promise;
 
   assert.equal(children.length, 1);
-  assert.deepEqual(res.written, ['chunk1']);
+  assert.deepEqual(res.written.map((c) => c.toString()), ['chunk1']);
   assert.equal(res.ended, true);
 });
 
@@ -74,7 +74,7 @@ test('streamViaFfmpeg falls back to transcode when copy exits nonzero with no ou
   await promise;
 
   assert.equal(children.length, 2);
-  assert.deepEqual(res.written, ['chunk-from-transcode']);
+  assert.deepEqual(res.written.map((c) => c.toString()), ['chunk-from-transcode']);
 });
 
 test('streamViaFfmpeg does not fall back once bytes have already been sent', async () => {
@@ -93,5 +93,5 @@ test('streamViaFfmpeg does not fall back once bytes have already been sent', asy
   await promise;
 
   assert.equal(children.length, 1);
-  assert.deepEqual(res.written, ['partial-chunk']);
+  assert.deepEqual(res.written.map((c) => c.toString()), ['partial-chunk']);
 });
