@@ -1,9 +1,11 @@
+import { readChannels, writeChannels } from './channelStore.js';
 import { getAuthKey, getInstalledAddons, findAddonById, invalidateAuthKey } from './stremioAccount.js';
 import { resolveChannelSource } from './addonClient.js';
 import { generateChannelSchedule } from './generateSchedule.js';
 import { readSchedule, writeSchedule, isScheduleFresh } from './scheduleStore.js';
 import { scheduleDailyAt } from './scheduling.js';
 import { createApp } from './server/app.js';
+import { createChannelActions } from './channelActions.js';
 
 export async function withRetries(fn, { retries = 3, delayMs = 1000, sleepImpl = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) } = {}) {
   let lastErr;
@@ -20,7 +22,8 @@ export async function withRetries(fn, { retries = 3, delayMs = 1000, sleepImpl =
 
 export async function bootstrap({
   env = process.env,
-  loadConfigImpl,
+  readChannelsImpl = readChannels,
+  writeChannelsImpl = writeChannels,
   getAuthKeyImpl = getAuthKey,
   getInstalledAddonsImpl = getInstalledAddons,
   findAddonByIdImpl = findAddonById,
@@ -32,15 +35,14 @@ export async function bootstrap({
   isScheduleFreshImpl = isScheduleFresh,
   scheduleDailyAtImpl = scheduleDailyAt,
   createAppImpl = createApp,
+  createChannelActionsImpl = createChannelActions,
   sleepImpl
 } = {}) {
   const dataDir = env.DATA_DIR || '/data';
-  const configPath = env.CONFIG_PATH || `${dataDir}/config.yml`;
+  const refreshTime = env.REFRESH_TIME || '00:00';
   const port = Number(env.PORT || 8080);
   const baseUrl = env.BASE_URL || `http://localhost:${port}`;
   const authCachePath = `${dataDir}/auth.json`;
-
-  const config = await loadConfigImpl(configPath);
 
   // Attempts to log in and fetch the installed addon list. On failure (after
   // retries), invalidates the cached auth key so a stale/expired key isn't
@@ -78,16 +80,6 @@ export async function bootstrap({
     }
   }
 
-  const installedAddonsAtStartup = await discoverInstalledAddons();
-  if (!installedAddonsAtStartup) {
-    console.error('Continuing with cached schedules only.');
-  }
-
-  const channels = config.channels.map((channel) => ({
-    ...channel,
-    source: resolveSource(channel, installedAddonsAtStartup)
-  }));
-
   async function regenerate(channel) {
     if (!channel.source) {
       console.error(`Skipping schedule regeneration for "${channel.name}": no resolved addon source`);
@@ -101,10 +93,23 @@ export async function bootstrap({
     }
   }
 
+  const installedAddonsAtStartup = await discoverInstalledAddons();
+  if (!installedAddonsAtStartup) {
+    console.error('Continuing with cached schedules only.');
+  }
+
+  const persistedChannels = await readChannelsImpl(dataDir);
+  const channels = persistedChannels
+    .filter((channel) => channel.enabled)
+    .map((channel) => ({
+      ...channel,
+      source: resolveSource(channel, installedAddonsAtStartup)
+    }));
+
   async function runStartupRegeneration() {
     for (const channel of channels) {
       const existing = await readScheduleImpl(dataDir, channel.id);
-      if (!isScheduleFreshImpl(existing, config.refreshTime, new Date())) {
+      if (!isScheduleFreshImpl(existing, refreshTime, new Date())) {
         await regenerate(channel);
       }
     }
@@ -131,9 +136,19 @@ export async function bootstrap({
     }
   }
 
-  scheduleDailyAtImpl(config.refreshTime, () => runDailyRegeneration());
+  scheduleDailyAtImpl(refreshTime, () => runDailyRegeneration());
 
-  const app = createAppImpl({ channels, dataDir, baseUrl });
+  const channelActions = createChannelActionsImpl({
+    dataDir,
+    channels,
+    discoverInstalledAddons,
+    resolveSourceImpl: resolveSource,
+    regenerateImpl: regenerate,
+    readChannelsImpl,
+    writeChannelsImpl
+  });
+
+  const app = createAppImpl({ channels, dataDir, baseUrl, channelActions });
   const server = app.listen(port, () => console.log(`stremioTuner listening on port ${port}`));
 
   // Populate/refresh on-disk schedules in the background so the HTTP server
@@ -143,5 +158,5 @@ export async function bootstrap({
     console.error(`Startup schedule regeneration failed: ${err.message}`);
   });
 
-  return { app, channels, server, startupRegenerationDone };
+  return { app, channels, server, startupRegenerationDone, channelActions };
 }

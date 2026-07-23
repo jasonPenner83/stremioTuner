@@ -6,19 +6,21 @@ function fakeApp() {
   return { listen: (port, cb) => { cb?.(); return { address: () => ({ port }) }; } };
 }
 
+function channel(overrides = {}) {
+  return { mode: 'random', minQuality: '480p', language: 'en', enabled: true, ...overrides };
+}
+
 test('bootstrap resolves each channel\'s source and only regenerates stale schedules', async () => {
   const writtenSchedules = [];
   const createdAppArgs = [];
 
   const result = await bootstrap({
-    env: { DATA_DIR: '/data', CONFIG_PATH: '/data/config.yml', PORT: '9999', BASE_URL: 'http://localhost:9999', STREMIO_EMAIL: 'a@b.com', STREMIO_PASSWORD: 'pw' },
-    loadConfigImpl: async () => ({
-      refreshTime: '00:00',
-      channels: [
-        { id: 'fresh', name: 'Fresh', addon: 'org.a', catalog: 'cat-a', mode: 'random', minQuality: '480p', language: 'en' },
-        { id: 'stale', name: 'Stale', addon: 'org.b', catalog: 'cat-b', mode: 'random-start', minQuality: '480p', language: 'en' }
-      ]
-    }),
+    env: { DATA_DIR: '/data', PORT: '9999', BASE_URL: 'http://localhost:9999', STREMIO_EMAIL: 'a@b.com', STREMIO_PASSWORD: 'pw' },
+    readChannelsImpl: async () => ([
+      channel({ id: 'fresh', name: 'Fresh', addon: 'org.a', catalog: 'cat-a' }),
+      channel({ id: 'stale', name: 'Stale', addon: 'org.b', catalog: 'cat-b', mode: 'random-start' })
+    ]),
+    writeChannelsImpl: async () => {},
     getAuthKeyImpl: async () => 'auth-key',
     getInstalledAddonsImpl: async () => [
       { transportUrl: 'https://a/manifest.json', manifest: { id: 'org.a', catalogs: [{ id: 'cat-a', type: 'movie' }] } },
@@ -39,6 +41,34 @@ test('bootstrap resolves each channel\'s source and only regenerates stale sched
   assert.equal(createdAppArgs[0].channels.find((c) => c.id === 'fresh').source.transportUrl, 'https://a/manifest.json');
   assert.equal(createdAppArgs[0].channels.find((c) => c.id === 'stale').source.type, 'series');
   assert.equal(result.app, createdAppArgs[0] && result.app);
+  assert.ok(result.channelActions);
+});
+
+test('bootstrap only loads enabled channels into the live array', async () => {
+  const createdAppArgs = [];
+
+  await bootstrap({
+    env: { STREMIO_EMAIL: 'a@b.com', STREMIO_PASSWORD: 'pw' },
+    readChannelsImpl: async () => ([
+      channel({ id: 'on', name: 'On', addon: 'org.a', catalog: 'cat-a', enabled: true }),
+      channel({ id: 'off', name: 'Off', addon: 'org.a', catalog: 'cat-a', enabled: false })
+    ]),
+    writeChannelsImpl: async () => {},
+    getAuthKeyImpl: async () => 'auth-key',
+    getInstalledAddonsImpl: async () => [
+      { transportUrl: 'https://a/manifest.json', manifest: { id: 'org.a', catalogs: [{ id: 'cat-a', type: 'movie' }] } }
+    ],
+    findAddonByIdImpl: (addons, id) => addons.find((a) => a.manifest.id === id),
+    resolveChannelSourceImpl: (manifest, catalogId) => manifest.catalogs.find((c) => c.id === catalogId),
+    readScheduleImpl: async () => null,
+    isScheduleFreshImpl: () => false,
+    generateChannelScheduleImpl: async ({ channel: ch }) => ({ generatedAt: 'new', items: [], channelId: ch.id }),
+    writeScheduleImpl: async () => {},
+    scheduleDailyAtImpl: () => ({ cancel() {} }),
+    createAppImpl: (args) => { createdAppArgs.push(args); return fakeApp(); }
+  });
+
+  assert.deepEqual(createdAppArgs[0].channels.map((c) => c.id), ['on']);
 });
 
 test('bootstrap retries a failing getAuthKey with backoff before giving up', async () => {
@@ -48,10 +78,8 @@ test('bootstrap retries a failing getAuthKey with backoff before giving up', asy
 
   await bootstrap({
     env: { STREMIO_EMAIL: 'a@b.com', STREMIO_PASSWORD: 'pw' },
-    loadConfigImpl: async () => ({
-      refreshTime: '00:00',
-      channels: [{ id: 'x', name: 'X', addon: 'org.a', catalog: 'cat-a', mode: 'random', minQuality: '480p', language: 'en' }]
-    }),
+    readChannelsImpl: async () => ([channel({ id: 'x', name: 'X', addon: 'org.a', catalog: 'cat-a' })]),
+    writeChannelsImpl: async () => {},
     getAuthKeyImpl: async () => {
       attempts += 1;
       if (attempts < 3) throw new Error('login failed');
@@ -82,10 +110,8 @@ test('bootstrap still starts the server with source: null when login fails perma
 
   const result = await bootstrap({
     env: { STREMIO_EMAIL: 'a@b.com', STREMIO_PASSWORD: 'wrong' },
-    loadConfigImpl: async () => ({
-      refreshTime: '00:00',
-      channels: [{ id: 'x', name: 'X', addon: 'org.a', catalog: 'cat-a', mode: 'random', minQuality: '480p', language: 'en' }]
-    }),
+    readChannelsImpl: async () => ([channel({ id: 'x', name: 'X', addon: 'org.a', catalog: 'cat-a' })]),
+    writeChannelsImpl: async () => {},
     getAuthKeyImpl: async () => { throw new Error('always fails'); },
     invalidateAuthKeyImpl: async () => {},
     sleepImpl: async () => {},
@@ -108,13 +134,11 @@ test('bootstrap catches a schedule generation failure for one channel without af
 
   const result = await bootstrap({
     env: { STREMIO_EMAIL: 'a@b.com', STREMIO_PASSWORD: 'pw' },
-    loadConfigImpl: async () => ({
-      refreshTime: '00:00',
-      channels: [
-        { id: 'bad', name: 'Bad', addon: 'org.a', catalog: 'cat-a', mode: 'random', minQuality: '480p', language: 'en' },
-        { id: 'good', name: 'Good', addon: 'org.b', catalog: 'cat-b', mode: 'random', minQuality: '480p', language: 'en' }
-      ]
-    }),
+    readChannelsImpl: async () => ([
+      channel({ id: 'bad', name: 'Bad', addon: 'org.a', catalog: 'cat-a' }),
+      channel({ id: 'good', name: 'Good', addon: 'org.b', catalog: 'cat-b' })
+    ]),
+    writeChannelsImpl: async () => {},
     getAuthKeyImpl: async () => 'auth-key',
     getInstalledAddonsImpl: async () => [
       { transportUrl: 'https://a/manifest.json', manifest: { id: 'org.a', catalogs: [{ id: 'cat-a', type: 'movie' }] } },
@@ -124,9 +148,9 @@ test('bootstrap catches a schedule generation failure for one channel without af
     resolveChannelSourceImpl: (manifest, catalogId) => manifest.catalogs.find((c) => c.id === catalogId),
     readScheduleImpl: async () => null,
     isScheduleFreshImpl: () => false,
-    generateChannelScheduleImpl: async ({ channel }) => {
-      if (channel.id === 'bad') throw new Error('generation exploded');
-      return { generatedAt: 'new', items: [], channelId: channel.id };
+    generateChannelScheduleImpl: async ({ channel: ch }) => {
+      if (ch.id === 'bad') throw new Error('generation exploded');
+      return { generatedAt: 'new', items: [], channelId: ch.id };
     },
     writeScheduleImpl: async (dataDir, channelId) => { writtenSchedules.push(channelId); },
     scheduleDailyAtImpl: () => ({ cancel() {} }),
@@ -146,13 +170,11 @@ test('bootstrap resolves source: null for a channel whose addon lookup fails whi
 
   const result = await bootstrap({
     env: { STREMIO_EMAIL: 'a@b.com', STREMIO_PASSWORD: 'pw' },
-    loadConfigImpl: async () => ({
-      refreshTime: '00:00',
-      channels: [
-        { id: 'missing', name: 'Missing', addon: 'org.missing', catalog: 'cat-a', mode: 'random', minQuality: '480p', language: 'en' },
-        { id: 'ok', name: 'Ok', addon: 'org.b', catalog: 'cat-b', mode: 'random', minQuality: '480p', language: 'en' }
-      ]
-    }),
+    readChannelsImpl: async () => ([
+      channel({ id: 'missing', name: 'Missing', addon: 'org.missing', catalog: 'cat-a' }),
+      channel({ id: 'ok', name: 'Ok', addon: 'org.b', catalog: 'cat-b' })
+    ]),
+    writeChannelsImpl: async () => {},
     getAuthKeyImpl: async () => 'auth-key',
     getInstalledAddonsImpl: async () => [
       { transportUrl: 'https://b/manifest.json', manifest: { id: 'org.b', catalogs: [{ id: 'cat-b', type: 'series' }] } }
@@ -165,7 +187,7 @@ test('bootstrap resolves source: null for a channel whose addon lookup fails whi
     resolveChannelSourceImpl: (manifest, catalogId) => manifest.catalogs.find((c) => c.id === catalogId),
     readScheduleImpl: async () => null,
     isScheduleFreshImpl: () => false,
-    generateChannelScheduleImpl: async ({ channel }) => ({ generatedAt: 'new', items: [], channelId: channel.id }),
+    generateChannelScheduleImpl: async ({ channel: ch }) => ({ generatedAt: 'new', items: [], channelId: ch.id }),
     writeScheduleImpl: async (dataDir, channelId) => { writtenSchedules.push(channelId); },
     scheduleDailyAtImpl: () => ({ cancel() {} }),
     createAppImpl: (args) => { createdAppArgs.push(args); return fakeApp(); }
@@ -185,10 +207,8 @@ test('bootstrap calls app.listen before the startup schedule-regeneration pass r
 
   const result = await bootstrap({
     env: { STREMIO_EMAIL: 'a@b.com', STREMIO_PASSWORD: 'pw' },
-    loadConfigImpl: async () => ({
-      refreshTime: '00:00',
-      channels: [{ id: 'x', name: 'X', addon: 'org.a', catalog: 'cat-a', mode: 'random', minQuality: '480p', language: 'en' }]
-    }),
+    readChannelsImpl: async () => ([channel({ id: 'x', name: 'X', addon: 'org.a', catalog: 'cat-a' })]),
+    writeChannelsImpl: async () => {},
     getAuthKeyImpl: async () => 'auth-key',
     getInstalledAddonsImpl: async () => [
       { transportUrl: 'https://a/manifest.json', manifest: { id: 'org.a', catalogs: [{ id: 'cat-a', type: 'movie' }] } }
@@ -197,10 +217,10 @@ test('bootstrap calls app.listen before the startup schedule-regeneration pass r
     resolveChannelSourceImpl: (manifest, catalogId) => manifest.catalogs.find((c) => c.id === catalogId),
     readScheduleImpl: async () => null,
     isScheduleFreshImpl: () => false,
-    generateChannelScheduleImpl: async ({ channel }) => {
+    generateChannelScheduleImpl: async ({ channel: ch }) => {
       await generationGate;
       events.push('generated');
-      return { generatedAt: 'new', items: [], channelId: channel.id };
+      return { generatedAt: 'new', items: [], channelId: ch.id };
     },
     writeScheduleImpl: async () => {},
     scheduleDailyAtImpl: () => ({ cancel() {} }),
@@ -209,8 +229,6 @@ test('bootstrap calls app.listen before the startup schedule-regeneration pass r
     })
   });
 
-  // listen() must have already happened even though schedule generation is
-  // still pending (gated on generationGate).
   assert.deepEqual(events, ['listen']);
 
   releaseGeneration();
@@ -225,15 +243,10 @@ test('daily cron re-resolves a channel whose source is null and regenerates its 
 
   const result = await bootstrap({
     env: { STREMIO_EMAIL: 'a@b.com', STREMIO_PASSWORD: 'pw' },
-    loadConfigImpl: async () => ({
-      refreshTime: '00:00',
-      channels: [{ id: 'x', name: 'X', addon: 'org.a', catalog: 'cat-a', mode: 'random', minQuality: '480p', language: 'en' }]
-    }),
+    readChannelsImpl: async () => ([channel({ id: 'x', name: 'X', addon: 'org.a', catalog: 'cat-a' })]),
+    writeChannelsImpl: async () => {},
     getAuthKeyImpl: async () => {
       discoveryAttempts += 1;
-      // withRetries makes 4 attempts (initial + 3 retries) per logical
-      // discovery call; fail all of them at startup so the channel ends up
-      // with source: null, then succeed once the cron re-resolution runs.
       if (discoveryAttempts <= 4) throw new Error('login failed at startup');
       return 'auth-key';
     },
@@ -246,19 +259,16 @@ test('daily cron re-resolves a channel whose source is null and regenerates its 
     resolveChannelSourceImpl: (manifest, catalogId) => manifest.catalogs.find((c) => c.id === catalogId),
     readScheduleImpl: async () => null,
     isScheduleFreshImpl: () => false,
-    generateChannelScheduleImpl: async ({ channel }) => ({ generatedAt: 'new', items: [], channelId: channel.id }),
+    generateChannelScheduleImpl: async ({ channel: ch }) => ({ generatedAt: 'new', items: [], channelId: ch.id }),
     writeScheduleImpl: async (dataDir, channelId) => { writtenSchedules.push(channelId); },
     scheduleDailyAtImpl: (refreshTime, cb) => { cronCallback = cb; return { cancel() {} }; },
     createAppImpl: () => fakeApp()
   });
   await result.startupRegenerationDone;
 
-  // Startup discovery failed, so the channel has no resolved source yet.
   assert.equal(result.channels[0].source, null);
   assert.deepEqual(writtenSchedules, []);
 
-  // Cron fires: this time discovery succeeds, so the channel's source should
-  // be re-resolved and its schedule regenerated.
   await cronCallback();
 
   assert.equal(result.channels[0].source.transportUrl, 'https://a/manifest.json');
@@ -271,10 +281,8 @@ test('daily cron invalidates the cached auth key when re-resolution discovery fa
 
   const result = await bootstrap({
     env: { STREMIO_EMAIL: 'a@b.com', STREMIO_PASSWORD: 'pw' },
-    loadConfigImpl: async () => ({
-      refreshTime: '00:00',
-      channels: [{ id: 'x', name: 'X', addon: 'org.a', catalog: 'cat-a', mode: 'random', minQuality: '480p', language: 'en' }]
-    }),
+    readChannelsImpl: async () => ([channel({ id: 'x', name: 'X', addon: 'org.a', catalog: 'cat-a' })]),
+    writeChannelsImpl: async () => {},
     getAuthKeyImpl: async () => { throw new Error('always fails'); },
     invalidateAuthKeyImpl: async () => { invalidateCalls += 1; },
     sleepImpl: async () => {},
@@ -286,14 +294,47 @@ test('daily cron invalidates the cached auth key when re-resolution discovery fa
   });
   await result.startupRegenerationDone;
 
-  // One invalidation from the failed startup discovery attempt.
   assert.equal(invalidateCalls, 1);
   assert.equal(result.channels[0].source, null);
 
   await cronCallback();
 
-  // Cron re-attempted discovery for the still-unresolved channel, which also
-  // failed, so the cache should be invalidated again.
   assert.equal(invalidateCalls, 2);
   assert.equal(result.channels[0].source, null);
+});
+
+test('bootstrap wires a real channelActions instance that can add a channel and have it appear live immediately', async () => {
+  const writtenSchedules = [];
+  let writtenChannels = null;
+
+  const result = await bootstrap({
+    env: { STREMIO_EMAIL: 'a@b.com', STREMIO_PASSWORD: 'pw' },
+    readChannelsImpl: async () => [],
+    writeChannelsImpl: async (dataDir, list) => { writtenChannels = list; },
+    getAuthKeyImpl: async () => 'auth-key',
+    getInstalledAddonsImpl: async () => [
+      { transportUrl: 'https://a/manifest.json', manifest: { id: 'org.a', name: 'Addon A', catalogs: [{ id: 'cat-a', name: 'Cat A', type: 'movie' }] } }
+    ],
+    findAddonByIdImpl: (addons, id) => addons.find((a) => a.manifest.id === id),
+    resolveChannelSourceImpl: (manifest, catalogId) => manifest.catalogs.find((c) => c.id === catalogId),
+    readScheduleImpl: async () => null,
+    isScheduleFreshImpl: () => false,
+    generateChannelScheduleImpl: async ({ channel: ch }) => ({ generatedAt: 'new', items: [], channelId: ch.id }),
+    writeScheduleImpl: async (dataDir, channelId) => { writtenSchedules.push(channelId); },
+    scheduleDailyAtImpl: () => ({ cancel() {} }),
+    createAppImpl: () => fakeApp()
+  });
+  await result.startupRegenerationDone;
+
+  assert.equal(result.channels.length, 0);
+
+  const record = await result.channelActions.addChannel({
+    addon: 'org.a', catalog: 'cat-a', name: 'New Channel', mode: 'random', minQuality: '480p', language: 'en'
+  });
+
+  assert.equal(result.channels.length, 1);
+  assert.equal(result.channels[0].id, record.id);
+  assert.equal(result.channels[0].source.transportUrl, 'https://a/manifest.json');
+  assert.deepEqual(writtenChannels, [record]);
+  assert.deepEqual(writtenSchedules, [record.id]);
 });
