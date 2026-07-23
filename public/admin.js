@@ -83,7 +83,7 @@ async function loadCatalogs() {
     }
     const key = cssEscape(`${cat.addon}::${cat.catalog}`);
     return `
-      <tr data-addon="${cat.addon}" data-catalog="${cat.catalog}" data-key="${key}">
+      <tr data-addon="${escapeHtml(cat.addon)}" data-catalog="${escapeHtml(cat.catalog)}" data-key="${key}">
         <td>${escapeHtml(cat.addonName)}</td><td>${escapeHtml(cat.catalogName)}</td><td>${escapeHtml(cat.type)}</td>
         <td><button data-action="toggle-form">Add channel</button></td>
       </tr>
