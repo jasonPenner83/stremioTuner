@@ -48,7 +48,7 @@ export async function bootstrap({
       password: env.STREMIO_PASSWORD,
       cachePath: `${dataDir}/auth.json`
     }), { sleepImpl });
-    installedAddons = await getInstalledAddonsImpl(authKey);
+    installedAddons = await withRetries(() => getInstalledAddonsImpl(authKey), { sleepImpl });
   } catch (err) {
     console.error(`Stremio login/addon discovery failed after retries, continuing with cached schedules only: ${err.message}`);
   }

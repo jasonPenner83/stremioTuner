@@ -98,3 +98,77 @@ test('bootstrap still starts the server with source: null when login fails perma
   assert.deepEqual(writtenSchedules, []);
   assert.ok(result.server);
 });
+
+test('bootstrap catches a schedule generation failure for one channel without affecting others', async () => {
+  const writtenSchedules = [];
+  const createdAppArgs = [];
+
+  const result = await bootstrap({
+    env: { STREMIO_EMAIL: 'a@b.com', STREMIO_PASSWORD: 'pw' },
+    loadConfigImpl: async () => ({
+      refreshTime: '00:00',
+      channels: [
+        { id: 'bad', name: 'Bad', addon: 'org.a', catalog: 'cat-a', mode: 'random', minQuality: '480p', language: 'en' },
+        { id: 'good', name: 'Good', addon: 'org.b', catalog: 'cat-b', mode: 'random', minQuality: '480p', language: 'en' }
+      ]
+    }),
+    getAuthKeyImpl: async () => 'auth-key',
+    getInstalledAddonsImpl: async () => [
+      { transportUrl: 'https://a/manifest.json', manifest: { id: 'org.a', catalogs: [{ id: 'cat-a', type: 'movie' }] } },
+      { transportUrl: 'https://b/manifest.json', manifest: { id: 'org.b', catalogs: [{ id: 'cat-b', type: 'series' }] } }
+    ],
+    findAddonByIdImpl: (addons, id) => addons.find((a) => a.manifest.id === id),
+    resolveChannelSourceImpl: (manifest, catalogId) => manifest.catalogs.find((c) => c.id === catalogId),
+    readScheduleImpl: async () => null,
+    isScheduleFreshImpl: () => false,
+    generateChannelScheduleImpl: async ({ channel }) => {
+      if (channel.id === 'bad') throw new Error('generation exploded');
+      return { generatedAt: 'new', items: [], channelId: channel.id };
+    },
+    writeScheduleImpl: async (dataDir, channelId) => { writtenSchedules.push(channelId); },
+    scheduleDailyAtImpl: () => ({ cancel() {} }),
+    createAppImpl: (args) => { createdAppArgs.push(args); return fakeApp(); }
+  });
+
+  assert.deepEqual(writtenSchedules, ['good']);
+  assert.equal(createdAppArgs[0].channels.find((c) => c.id === 'bad').source.transportUrl, 'https://a/manifest.json');
+  assert.equal(createdAppArgs[0].channels.find((c) => c.id === 'good').source.transportUrl, 'https://b/manifest.json');
+  assert.ok(result.server);
+});
+
+test('bootstrap resolves source: null for a channel whose addon lookup fails while another channel resolves normally', async () => {
+  const writtenSchedules = [];
+  const createdAppArgs = [];
+
+  const result = await bootstrap({
+    env: { STREMIO_EMAIL: 'a@b.com', STREMIO_PASSWORD: 'pw' },
+    loadConfigImpl: async () => ({
+      refreshTime: '00:00',
+      channels: [
+        { id: 'missing', name: 'Missing', addon: 'org.missing', catalog: 'cat-a', mode: 'random', minQuality: '480p', language: 'en' },
+        { id: 'ok', name: 'Ok', addon: 'org.b', catalog: 'cat-b', mode: 'random', minQuality: '480p', language: 'en' }
+      ]
+    }),
+    getAuthKeyImpl: async () => 'auth-key',
+    getInstalledAddonsImpl: async () => [
+      { transportUrl: 'https://b/manifest.json', manifest: { id: 'org.b', catalogs: [{ id: 'cat-b', type: 'series' }] } }
+    ],
+    findAddonByIdImpl: (addons, id) => {
+      const found = addons.find((a) => a.manifest.id === id);
+      if (!found) throw new Error(`addon not found: ${id}`);
+      return found;
+    },
+    resolveChannelSourceImpl: (manifest, catalogId) => manifest.catalogs.find((c) => c.id === catalogId),
+    readScheduleImpl: async () => null,
+    isScheduleFreshImpl: () => false,
+    generateChannelScheduleImpl: async ({ channel }) => ({ generatedAt: 'new', items: [], channelId: channel.id }),
+    writeScheduleImpl: async (dataDir, channelId) => { writtenSchedules.push(channelId); },
+    scheduleDailyAtImpl: () => ({ cancel() {} }),
+    createAppImpl: (args) => { createdAppArgs.push(args); return fakeApp(); }
+  });
+
+  assert.equal(createdAppArgs[0].channels.find((c) => c.id === 'missing').source, null);
+  assert.equal(createdAppArgs[0].channels.find((c) => c.id === 'ok').source.transportUrl, 'https://b/manifest.json');
+  assert.deepEqual(writtenSchedules.sort(), ['ok']);
+  assert.ok(result.server);
+});
