@@ -77,3 +77,31 @@ test('scheduleDailyAt.cancel prevents further rescheduling', () => {
   scheduled[0].fn();
   assert.equal(scheduled.length, 1, 'should not schedule again after cancel');
 });
+
+test('scheduleDailyAt keeps rescheduling even if callback throws', () => {
+  const scheduled = [];
+  const fakeSetTimeout = (fn, delay) => {
+    scheduled.push({ fn, delay });
+    return scheduled.length;
+  };
+  const fakeClearTimeout = () => {};
+
+  scheduleDailyAt('00:00', () => {
+    throw new Error('test error');
+  }, {
+    now: () => new Date('2026-07-22T10:00:00'),
+    setTimeoutImpl: fakeSetTimeout,
+    clearTimeoutImpl: fakeClearTimeout
+  });
+
+  assert.equal(scheduled.length, 1, 'first timer scheduled');
+
+  // Invoke the first timer, catching any thrown error
+  try {
+    scheduled[0].fn();
+  } catch (e) {
+    // Error expected and caught, but rescheduling should have happened
+  }
+
+  assert.equal(scheduled.length, 2, 'second timer scheduled despite callback throw');
+});

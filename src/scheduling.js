@@ -34,8 +34,11 @@ export function scheduleDailyAt(refreshTime, callback, {
     if (cancelled) return;
     const delay = msUntilNextRun(refreshTime, now());
     timer = setTimeoutImpl(() => {
-      callback();
-      scheduleNext();
+      try {
+        callback();
+      } finally {
+        scheduleNext();
+      }
     }, delay);
   }
 
