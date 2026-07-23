@@ -3,8 +3,45 @@
 <head>
   <meta charset="utf-8">
   <title>stremioTuner</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
+    h1 { margin-bottom: 0.25rem; }
+    section { margin-top: 2rem; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 0.4rem; border-bottom: 1px solid #ddd; }
+    button { cursor: pointer; }
+    .banner { background: #fee; border: 1px solid #c00; padding: 0.5rem 1rem; margin-bottom: 1rem; display: none; }
+    .add-form { display: none; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+    .add-form.open { display: flex; }
+    select, input[type=text] { padding: 0.2rem; }
+  </style>
 </head>
 <body>
-  <p>stremioTuner admin UI — coming soon.</p>
+  <h1>stremioTuner</h1>
+  <p>Manage which Stremio catalogs are broadcast as channels. Changes take effect immediately.</p>
+
+  <div id="banner" class="banner"></div>
+
+  <section>
+    <h2>My channels</h2>
+    <table>
+      <thead>
+        <tr><th>Name</th><th>Mode</th><th>Min quality</th><th>Language</th><th>Enabled</th></tr>
+      </thead>
+      <tbody id="channels-body"></tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Available catalogs</h2>
+    <table>
+      <thead>
+        <tr><th>Addon</th><th>Catalog</th><th>Type</th><th></th></tr>
+      </thead>
+      <tbody id="catalogs-body"></tbody>
+    </table>
+  </section>
+
+  <script src="/admin.js"></script>
 </body>
 </html>
