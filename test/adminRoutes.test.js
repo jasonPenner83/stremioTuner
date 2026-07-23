@@ -99,3 +99,18 @@ test('PATCH /admin/channels/:id returns 404 when channelActions throws NotFoundE
   assert.equal(res.status, 404);
   assert.equal(body.error, 'no such channel');
 });
+
+test('POST /admin/channels returns 400 for malformed JSON body', async (t) => {
+  const baseUrl = await withRouter(t, {
+    addChannel: async () => ({ id: 'new-id' })
+  });
+  const res = await fetch(`${baseUrl}/channels`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{ not valid json'
+  });
+  assert.equal(res.status, 400);
+  const body = await res.json();
+  assert.equal(typeof body.error, 'string');
+  assert.match(body.error, /[Mm]alformed/);
+});

@@ -57,5 +57,15 @@ export function createAdminRouter(channelActions) {
     }
   });
 
+  // Error-handling middleware for body-parsing errors
+  router.use((err, req, res, next) => {
+    if (err.type === 'entity.parse.failed' || err instanceof SyntaxError) {
+      res.status(400).json({ error: 'Malformed JSON body' });
+      return;
+    }
+    console.error('Unexpected error in admin router:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  });
+
   return router;
 }
