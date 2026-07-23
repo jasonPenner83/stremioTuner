@@ -8,6 +8,7 @@ import { selectStream } from '../streamSelect.js';
 import { fetchStreams } from '../addonClient.js';
 import { streamViaFfmpeg } from './ffmpegProxy.js';
 import { createAdminRouter } from './adminRoutes.js';
+import { checkInstantAvailability, resolveStream, parseSeasonEpisode } from '../realDebrid.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', '..', 'public');
@@ -19,6 +20,9 @@ export function createApp({
   channelActions,
   fetchStreamsImpl = fetchStreams,
   streamViaFfmpegImpl = streamViaFfmpeg,
+  checkInstantAvailabilityImpl = checkInstantAvailability,
+  resolveStreamImpl = resolveStream,
+  realDebridApiKey = null,
   nowImpl = () => new Date()
 }) {
   const app = express();
@@ -70,14 +74,38 @@ export function createApp({
       }
 
       const offsetSeconds = (now - new Date(item.start).getTime()) / 1000;
-      const streams = await fetchStreamsImpl(channel.source.transportUrl, channel.source.type, item.id);
-      const selected = selectStream(streams, { minQuality: channel.minQuality, language: channel.language });
+      const streamSource = channel.streamSource || channel.source;
+      const streams = await fetchStreamsImpl(streamSource.transportUrl, channel.source.type, item.id);
+
+      const direct = streams.filter((s) => !!s.url);
+      let magnetCandidates = streams.filter((s) => !!s.infoHash && !s.url);
+
+      if (magnetCandidates.length && realDebridApiKey) {
+        const cached = await checkInstantAvailabilityImpl(realDebridApiKey, magnetCandidates.map((s) => s.infoHash));
+        magnetCandidates = magnetCandidates.filter((s) => cached.has(s.infoHash));
+      } else {
+        magnetCandidates = [];
+      }
+
+      const selected = selectStream([...direct, ...magnetCandidates], { minQuality: channel.minQuality, language: channel.language });
       if (!selected) {
         res.status(502).end('No playable stream found');
         return;
       }
 
-      await streamViaFfmpegImpl({ sourceUrl: selected.url, offsetSeconds, res });
+      let finalUrl = selected.url;
+      if (!finalUrl && selected.infoHash) {
+        const { season, episode } = parseSeasonEpisode(item.id);
+        try {
+          finalUrl = await resolveStreamImpl(realDebridApiKey, selected.infoHash, { season, episode });
+        } catch (err) {
+          console.error(`Real-Debrid resolution failed: ${err.message}`);
+          res.status(502).end('No playable stream found');
+          return;
+        }
+      }
+
+      await streamViaFfmpegImpl({ sourceUrl: finalUrl, offsetSeconds, res });
     } catch (err) {
       console.error('Failed to serve stream:', err);
       if (!res.headersSent) {
