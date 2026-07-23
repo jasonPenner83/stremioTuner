@@ -47,3 +47,11 @@ export async function getAuthKey({ email, password, cachePath, fs = fsPromises, 
   await fs.writeFile(cachePath, JSON.stringify({ authKey }));
   return authKey;
 }
+
+export async function invalidateAuthKey(cachePath, { fs = fsPromises } = {}) {
+  try {
+    await fs.unlink(cachePath);
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err;
+  }
+}
