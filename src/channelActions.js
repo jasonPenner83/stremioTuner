@@ -8,6 +8,7 @@ export function createChannelActions({
   channels,
   discoverInstalledAddons,
   resolveSourceImpl,
+  resolveStreamSourceImpl,
   regenerateImpl,
   readChannelsImpl = readChannels,
   writeChannelsImpl = writeChannels
@@ -35,7 +36,7 @@ export function createChannelActions({
     return readChannelsImpl(dataDir);
   }
 
-  async function addChannel({ addon, catalog, name, mode, minQuality, language }) {
+  async function addChannel({ addon, catalog, name, mode, minQuality, language, streamAddon }) {
     try {
       validateNewChannelFields({ mode, minQuality, language });
     } catch (err) {
@@ -54,10 +55,12 @@ export function createChannelActions({
       throw new ValidationError(`Could not resolve addon "${addon}" / catalog "${catalog}" from your installed Stremio addons`);
     }
 
-    const record = { id, addon, catalog, name, mode, minQuality, language, enabled: true };
+    const streamSource = streamAddon ? resolveStreamSourceImpl({ streamAddon, name }, installedAddons) : null;
+
+    const record = { id, addon, catalog, name, mode, minQuality, language, enabled: true, ...(streamAddon ? { streamAddon } : {}) };
     await writeChannelsImpl(dataDir, [...persisted, record]);
 
-    const liveChannel = { ...record, source };
+    const liveChannel = { ...record, source, streamSource };
     channels.push(liveChannel);
     await regenerateImpl(liveChannel);
 
@@ -66,7 +69,7 @@ export function createChannelActions({
 
   async function updateChannel(id, patch) {
     const allowedPatch = {};
-    for (const key of ['mode', 'minQuality', 'language', 'enabled']) {
+    for (const key of ['mode', 'minQuality', 'language', 'enabled', 'streamAddon']) {
       if (key in patch) allowedPatch[key] = patch[key];
     }
 
@@ -100,11 +103,16 @@ export function createChannelActions({
     if (liveIndex === -1) {
       const installedAddons = await discoverInstalledAddons();
       const source = resolveSourceImpl(updated, installedAddons);
-      const liveChannel = { ...updated, source };
+      const streamSource = updated.streamAddon ? resolveStreamSourceImpl(updated, installedAddons) : null;
+      const liveChannel = { ...updated, source, streamSource };
       channels.push(liveChannel);
       await regenerateImpl(liveChannel);
     } else {
       Object.assign(channels[liveIndex], updated);
+      if ('streamAddon' in allowedPatch) {
+        const installedAddons = await discoverInstalledAddons();
+        channels[liveIndex].streamSource = updated.streamAddon ? resolveStreamSourceImpl(updated, installedAddons) : null;
+      }
       await regenerateImpl(channels[liveIndex]);
     }
 

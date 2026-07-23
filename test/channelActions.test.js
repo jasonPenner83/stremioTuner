@@ -193,3 +193,71 @@ test('updateChannel rejects a non-boolean "enabled" value instead of silently tr
   assert.equal(channels.length, 1);
   assert.equal(channels[0].enabled, true);
 });
+
+test('addChannel resolves an optional streamAddon into streamSource on the live channel', async () => {
+  const channels = [];
+  const actions = createChannelActions({
+    dataDir: '/data',
+    channels,
+    discoverInstalledAddons: async () => ([{ manifest: { id: 'org.torrentio' }, transportUrl: 'https://torrentio/manifest.json' }]),
+    resolveSourceImpl: () => ({ transportUrl: 'https://cinemeta/manifest.json', type: 'movie' }),
+    resolveStreamSourceImpl: (channel, installedAddons) => {
+      const found = installedAddons.find((a) => a.manifest.id === channel.streamAddon);
+      return found ? { transportUrl: found.transportUrl } : null;
+    },
+    regenerateImpl: async () => {},
+    readChannelsImpl: async () => [],
+    writeChannelsImpl: async () => {}
+  });
+
+  const record = await actions.addChannel({
+    addon: 'cinemeta', catalog: 'top', name: 'X', mode: 'random', minQuality: '480p', language: 'en', streamAddon: 'org.torrentio'
+  });
+
+  assert.equal(record.streamAddon, 'org.torrentio');
+  assert.equal(channels[0].streamSource.transportUrl, 'https://torrentio/manifest.json');
+});
+
+test('addChannel sets streamSource: null when streamAddon is omitted', async () => {
+  const channels = [];
+  const actions = createChannelActions({
+    dataDir: '/data',
+    channels,
+    discoverInstalledAddons: async () => ([]),
+    resolveSourceImpl: () => ({ transportUrl: 'https://cinemeta/manifest.json', type: 'movie' }),
+    resolveStreamSourceImpl: () => { throw new Error('should not be called'); },
+    regenerateImpl: async () => {},
+    readChannelsImpl: async () => [],
+    writeChannelsImpl: async () => {}
+  });
+
+  const record = await actions.addChannel({
+    addon: 'cinemeta', catalog: 'top', name: 'X', mode: 'random', minQuality: '480p', language: 'en'
+  });
+
+  assert.equal(record.streamAddon, undefined);
+  assert.equal(channels[0].streamSource, null);
+});
+
+test('updateChannel re-resolves streamSource when streamAddon is patched on an already-enabled channel', async () => {
+  const channels = [{ id: 'x', addon: 'cinemeta', catalog: 'top', name: 'X', mode: 'random', minQuality: '480p', language: 'en', enabled: true, source: { transportUrl: 'https://cinemeta/manifest.json', type: 'movie' }, streamSource: null }];
+  let regeneratedId = null;
+  const actions = createChannelActions({
+    dataDir: '/data',
+    channels,
+    discoverInstalledAddons: async () => ([{ manifest: { id: 'org.torrentio' }, transportUrl: 'https://torrentio/manifest.json' }]),
+    resolveSourceImpl: () => ({ transportUrl: 'https://cinemeta/manifest.json', type: 'movie' }),
+    resolveStreamSourceImpl: (channel, installedAddons) => {
+      const found = installedAddons.find((a) => a.manifest.id === channel.streamAddon);
+      return found ? { transportUrl: found.transportUrl } : null;
+    },
+    regenerateImpl: async (ch) => { regeneratedId = ch.id; },
+    readChannelsImpl: async () => ([{ id: 'x', addon: 'cinemeta', catalog: 'top', name: 'X', mode: 'random', minQuality: '480p', language: 'en', enabled: true }]),
+    writeChannelsImpl: async () => {}
+  });
+
+  await actions.updateChannel('x', { streamAddon: 'org.torrentio' });
+
+  assert.equal(channels[0].streamSource.transportUrl, 'https://torrentio/manifest.json');
+  assert.equal(regeneratedId, 'x');
+});
