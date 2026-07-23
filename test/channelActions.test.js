@@ -159,3 +159,37 @@ test('updateChannel changing mode on an already-enabled channel mutates it in pl
   assert.equal(channels[0].mode, 'random-start');
   assert.equal(regenerated, liveChannel);
 });
+
+test('updateChannel ignores an "id" field in the patch body, keeping the original id everywhere', async () => {
+  const persisted = [{ id: 'x', addon: 'org.a', catalog: 'cat-a', name: 'X', mode: 'random', minQuality: '720p', language: 'en', enabled: true }];
+  const liveChannel = { ...persisted[0], source: { transportUrl: 'https://a/manifest.json', type: 'movie' } };
+  const channels = [liveChannel];
+  let written = null;
+  let regenerated = null;
+  const actions = createChannelActions(baseDeps({
+    channels,
+    readChannelsImpl: async () => persisted,
+    writeChannelsImpl: async (dataDir, list) => { written = list; },
+    regenerateImpl: async (ch) => { regenerated = ch; }
+  }));
+
+  const updated = await actions.updateChannel('x', { id: '../../../../tmp/evil', mode: 'random-start' });
+
+  assert.equal(updated.id, 'x');
+  assert.equal(written[0].id, 'x');
+  assert.equal(channels[0].id, 'x');
+  assert.equal(regenerated.id, 'x');
+});
+
+test('updateChannel rejects a non-boolean "enabled" value instead of silently treating it as enabled', async () => {
+  const persisted = [{ id: 'x', addon: 'org.a', catalog: 'cat-a', name: 'X', mode: 'random', minQuality: '720p', language: 'en', enabled: true }];
+  const channels = [{ ...persisted[0], source: { transportUrl: 'https://a/manifest.json', type: 'movie' } }];
+  const actions = createChannelActions(baseDeps({
+    channels,
+    readChannelsImpl: async () => persisted
+  }));
+
+  await assert.rejects(() => actions.updateChannel('x', { enabled: 'false' }), ValidationError);
+  assert.equal(channels.length, 1);
+  assert.equal(channels[0].enabled, true);
+});

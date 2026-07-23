@@ -65,8 +65,16 @@ export function createChannelActions({
   }
 
   async function updateChannel(id, patch) {
+    const allowedPatch = {};
+    for (const key of ['mode', 'minQuality', 'language', 'enabled']) {
+      if (key in patch) allowedPatch[key] = patch[key];
+    }
+
     try {
-      validatePatchFields(patch);
+      validatePatchFields(allowedPatch);
+      if (allowedPatch.enabled !== undefined && typeof allowedPatch.enabled !== 'boolean') {
+        throw new Error(`Invalid enabled "${allowedPatch.enabled}" (must be a boolean)`);
+      }
     } catch (err) {
       throw new ValidationError(err.message);
     }
@@ -77,7 +85,7 @@ export function createChannelActions({
       throw new NotFoundError(`No channel with id "${id}"`);
     }
 
-    const updated = { ...persisted[index], ...patch };
+    const updated = { ...persisted[index], ...allowedPatch };
     const nextPersisted = [...persisted];
     nextPersisted[index] = updated;
     await writeChannelsImpl(dataDir, nextPersisted);
