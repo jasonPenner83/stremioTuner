@@ -14,11 +14,29 @@
     .add-form { display: none; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
     .add-form.open { display: flex; }
     select, input[type=text] { padding: 0.2rem; }
+    .topbar { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; padding: 0.5rem 0.75rem; background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; }
+    .topbar .link-group { display: flex; align-items: center; gap: 0.35rem; }
+    .topbar a { font-weight: 600; }
+    .topbar button { font-size: 0.85rem; padding: 0.1rem 0.5rem; }
+    details { border: 1px solid #ddd; border-radius: 4px; margin-bottom: 0.5rem; }
+    details summary { cursor: pointer; padding: 0.5rem 0.75rem; font-weight: 600; }
+    details table { margin: 0 0.75rem 0.75rem; width: calc(100% - 1.5rem); }
   </style>
 </head>
 <body>
   <h1>stremioTuner</h1>
   <p>Manage which Stremio catalogs are broadcast as channels. Changes take effect immediately.</p>
+
+  <nav class="topbar">
+    <span class="link-group">
+      <a id="m3u-link" href="/playlist.m3u" target="_blank" rel="noopener">M3U</a>
+      <button type="button" data-copy-target="m3u-link">Copy</button>
+    </span>
+    <span class="link-group">
+      <a id="epg-link" href="/epg.xml" target="_blank" rel="noopener">EPG</a>
+      <button type="button" data-copy-target="epg-link">Copy</button>
+    </span>
+  </nav>
 
   <div id="banner" class="banner"></div>
 
@@ -34,12 +52,7 @@
 
   <section>
     <h2>Available catalogs</h2>
-    <table>
-      <thead>
-        <tr><th>Addon</th><th>Catalog</th><th>Type</th><th></th></tr>
-      </thead>
-      <tbody id="catalogs-body"></tbody>
-    </table>
+    <div id="catalogs-container"></div>
   </section>
 
   <script src="/admin.js"></script>

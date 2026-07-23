@@ -36,6 +36,23 @@ function hideBanner() {
   document.getElementById('banner').style.display = 'none';
 }
 
+function wireCopyButtons() {
+  document.querySelectorAll('button[data-copy-target]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const link = document.getElementById(btn.dataset.copyTarget);
+      const url = new URL(link.getAttribute('href'), window.location.origin).href;
+      try {
+        await navigator.clipboard.writeText(url);
+        const original = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = original; }, 1500);
+      } catch (err) {
+        showBanner(`Could not copy link: ${err.message}`);
+      }
+    });
+  });
+}
+
 async function loadChannels() {
   const channels = await fetchJson('/admin/channels');
   const body = document.getElementById('channels-body');
@@ -70,45 +87,61 @@ async function loadChannels() {
   });
 }
 
+function catalogRowHtml(cat) {
+  if (cat.channelId) {
+    return `<tr><td>${escapeHtml(cat.catalogName)}</td><td>${escapeHtml(cat.type)}</td><td>Already added</td></tr>`;
+  }
+  const key = cssEscape(`${cat.addon}::${cat.catalog}`);
+  return `
+    <tr data-addon="${escapeHtml(cat.addon)}" data-catalog="${escapeHtml(cat.catalog)}" data-key="${key}">
+      <td>${escapeHtml(cat.catalogName)}</td><td>${escapeHtml(cat.type)}</td>
+      <td><button data-action="toggle-form">Add channel</button></td>
+    </tr>
+    <tr class="add-form-row">
+      <td colspan="3">
+        <div class="add-form" id="form-${key}">
+          <input type="text" data-field="name" placeholder="Channel name" value="${escapeHtml(cat.catalogName)}">
+          ${selectHtml('mode', MODES, 'random-start')}
+          ${selectHtml('minQuality', QUALITIES, '720p')}
+          ${selectHtml('language', LANGUAGES, 'en')}
+          <button data-action="submit">Save</button>
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
 async function loadCatalogs() {
   const result = await fetchJson('/admin/catalogs');
   if (result.degraded) {
     showBanner('Could not reach your Stremio account right now — catalog list unavailable.');
   }
 
-  const body = document.getElementById('catalogs-body');
-  body.innerHTML = result.catalogs.map((cat) => {
-    if (cat.channelId) {
-      return `<tr><td>${escapeHtml(cat.addonName)}</td><td>${escapeHtml(cat.catalogName)}</td><td>${escapeHtml(cat.type)}</td><td>Already added</td></tr>`;
-    }
-    const key = cssEscape(`${cat.addon}::${cat.catalog}`);
-    return `
-      <tr data-addon="${escapeHtml(cat.addon)}" data-catalog="${escapeHtml(cat.catalog)}" data-key="${key}">
-        <td>${escapeHtml(cat.addonName)}</td><td>${escapeHtml(cat.catalogName)}</td><td>${escapeHtml(cat.type)}</td>
-        <td><button data-action="toggle-form">Add channel</button></td>
-      </tr>
-      <tr class="add-form-row">
-        <td colspan="4">
-          <div class="add-form" id="form-${key}">
-            <input type="text" data-field="name" placeholder="Channel name" value="${escapeHtml(cat.catalogName)}">
-            ${selectHtml('mode', MODES, 'random-start')}
-            ${selectHtml('minQuality', QUALITIES, '720p')}
-            ${selectHtml('language', LANGUAGES, 'en')}
-            <button data-action="submit">Save</button>
-          </div>
-        </td>
-      </tr>
-    `;
-  }).join('');
+  const groups = new Map();
+  for (const cat of result.catalogs) {
+    if (!groups.has(cat.addon)) groups.set(cat.addon, { addonName: cat.addonName, catalogs: [] });
+    groups.get(cat.addon).catalogs.push(cat);
+  }
 
-  body.querySelectorAll('button[data-action="toggle-form"]').forEach((btn) => {
+  const container = document.getElementById('catalogs-container');
+  container.innerHTML = [...groups.values()].map((group) => `
+    <details>
+      <summary>${escapeHtml(group.addonName)} (${group.catalogs.length})</summary>
+      <table>
+        <thead><tr><th>Catalog</th><th>Type</th><th></th></tr></thead>
+        <tbody>${group.catalogs.map(catalogRowHtml).join('')}</tbody>
+      </table>
+    </details>
+  `).join('');
+
+  container.querySelectorAll('button[data-action="toggle-form"]').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       const row = e.target.closest('tr');
       document.getElementById(`form-${row.dataset.key}`).classList.toggle('open');
     });
   });
 
-  body.querySelectorAll('button[data-action="submit"]').forEach((btn) => {
+  container.querySelectorAll('button[data-action="submit"]').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       const formDiv = e.target.closest('.add-form');
       const row = formDiv.closest('tr').previousElementSibling;
@@ -138,4 +171,5 @@ async function loadAll() {
   await loadCatalogs();
 }
 
+wireCopyButtons();
 loadAll();
