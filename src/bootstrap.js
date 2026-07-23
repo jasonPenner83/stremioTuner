@@ -1,5 +1,5 @@
 import { loadConfig } from './config.js';
-import { getAuthKey, getInstalledAddons, findAddonById } from './stremioAccount.js';
+import { getAuthKey, getInstalledAddons, findAddonById, invalidateAuthKey } from './stremioAccount.js';
 import { resolveChannelSource } from './addonClient.js';
 import { generateChannelSchedule } from './generateSchedule.js';
 import { readSchedule, writeSchedule, isScheduleFresh } from './scheduleStore.js';
@@ -25,6 +25,7 @@ export async function bootstrap({
   getAuthKeyImpl = getAuthKey,
   getInstalledAddonsImpl = getInstalledAddons,
   findAddonByIdImpl = findAddonById,
+  invalidateAuthKeyImpl = invalidateAuthKey,
   resolveChannelSourceImpl = resolveChannelSource,
   generateChannelScheduleImpl = generateChannelSchedule,
   readScheduleImpl = readSchedule,
@@ -38,35 +39,55 @@ export async function bootstrap({
   const configPath = env.CONFIG_PATH || `${dataDir}/config.yml`;
   const port = Number(env.PORT || 8080);
   const baseUrl = env.BASE_URL || `http://localhost:${port}`;
+  const authCachePath = `${dataDir}/auth.json`;
 
   const config = await loadConfigImpl(configPath);
 
-  let installedAddons = null;
-  try {
-    const authKey = await withRetries(() => getAuthKeyImpl({
-      email: env.STREMIO_EMAIL,
-      password: env.STREMIO_PASSWORD,
-      cachePath: `${dataDir}/auth.json`
-    }), { sleepImpl });
-    installedAddons = await withRetries(() => getInstalledAddonsImpl(authKey), { sleepImpl });
-  } catch (err) {
-    console.error(`Stremio login/addon discovery failed after retries, continuing with cached schedules only: ${err.message}`);
+  // Attempts to log in and fetch the installed addon list. On failure (after
+  // retries), invalidates the cached auth key so a stale/expired key isn't
+  // reused forever on subsequent attempts (startup or cron re-resolution).
+  async function discoverInstalledAddons() {
+    try {
+      const authKey = await withRetries(() => getAuthKeyImpl({
+        email: env.STREMIO_EMAIL,
+        password: env.STREMIO_PASSWORD,
+        cachePath: authCachePath
+      }), { sleepImpl });
+      return await withRetries(() => getInstalledAddonsImpl(authKey), { sleepImpl });
+    } catch (err) {
+      console.error(`Stremio login/addon discovery failed after retries: ${err.message}`);
+      try {
+        await invalidateAuthKeyImpl(authCachePath);
+      } catch (invalidateErr) {
+        console.error(`Failed to invalidate cached auth key: ${invalidateErr.message}`);
+      }
+      return null;
+    }
   }
 
-  const channels = config.channels.map((channel) => {
-    if (!installedAddons) return { ...channel, source: null };
+  function resolveSource(channel, installedAddons) {
+    if (!installedAddons) return null;
     try {
       const addonEntry = findAddonByIdImpl(installedAddons, channel.addon);
-      const source = {
+      return {
         transportUrl: addonEntry.transportUrl,
         ...resolveChannelSourceImpl(addonEntry.manifest, channel.catalog)
       };
-      return { ...channel, source };
     } catch (err) {
       console.error(`Could not resolve addon source for channel "${channel.name}": ${err.message}`);
-      return { ...channel, source: null };
+      return null;
     }
-  });
+  }
+
+  const installedAddonsAtStartup = await discoverInstalledAddons();
+  if (!installedAddonsAtStartup) {
+    console.error('Continuing with cached schedules only.');
+  }
+
+  const channels = config.channels.map((channel) => ({
+    ...channel,
+    source: resolveSource(channel, installedAddonsAtStartup)
+  }));
 
   async function regenerate(channel) {
     if (!channel.source) {
@@ -81,19 +102,47 @@ export async function bootstrap({
     }
   }
 
-  for (const channel of channels) {
-    const existing = await readScheduleImpl(dataDir, channel.id);
-    if (!isScheduleFreshImpl(existing, config.refreshTime, new Date())) {
+  async function runStartupRegeneration() {
+    for (const channel of channels) {
+      const existing = await readScheduleImpl(dataDir, channel.id);
+      if (!isScheduleFreshImpl(existing, config.refreshTime, new Date())) {
+        await regenerate(channel);
+      }
+    }
+  }
+
+  async function runDailyRegeneration() {
+    // Re-resolve any channel whose source is still null (e.g. because Stremio
+    // login/addon discovery failed at startup or on a previous cron run) so a
+    // transient outage doesn't permanently degrade the channel until a manual
+    // restart.
+    const channelsNeedingSource = channels.filter((channel) => !channel.source);
+    if (channelsNeedingSource.length > 0) {
+      const installedAddons = await discoverInstalledAddons();
+      if (installedAddons) {
+        for (const channel of channelsNeedingSource) {
+          const source = resolveSource(channel, installedAddons);
+          if (source) channel.source = source;
+        }
+      }
+    }
+
+    for (const channel of channels) {
       await regenerate(channel);
     }
   }
 
-  scheduleDailyAtImpl(config.refreshTime, () => {
-    channels.forEach(regenerate);
-  });
+  scheduleDailyAtImpl(config.refreshTime, () => runDailyRegeneration());
 
   const app = createAppImpl({ channels, dataDir, baseUrl });
   const server = app.listen(port, () => console.log(`stremioTuner listening on port ${port}`));
 
-  return { app, channels, server };
+  // Populate/refresh on-disk schedules in the background so the HTTP server
+  // is reachable immediately, rather than blocking listen() behind
+  // potentially long (or hung) per-channel metadata fetches.
+  const startupRegenerationDone = runStartupRegeneration().catch((err) => {
+    console.error(`Startup schedule regeneration failed: ${err.message}`);
+  });
+
+  return { app, channels, server, startupRegenerationDone };
 }
