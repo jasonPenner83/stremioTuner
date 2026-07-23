@@ -44,6 +44,11 @@ export async function bootstrap({
   const baseUrl = env.BASE_URL || `http://localhost:${port}`;
   const authCachePath = `${dataDir}/auth.json`;
 
+  const realDebridApiKey = env.REALDEBRID_API_KEY || null;
+  if (!realDebridApiKey) {
+    console.warn('REALDEBRID_API_KEY not set — magnet-only stream candidates will be ignored.');
+  }
+
   // Attempts to log in and fetch the installed addon list. On failure (after
   // retries), invalidates the cached auth key so a stale/expired key isn't
   // reused forever on subsequent attempts (startup or cron re-resolution).
@@ -80,6 +85,18 @@ export async function bootstrap({
     }
   }
 
+  function resolveStreamSource(channel, installedAddons) {
+    if (!channel.streamAddon) return null;
+    if (!installedAddons) return null;
+    try {
+      const addonEntry = findAddonByIdImpl(installedAddons, channel.streamAddon);
+      return { transportUrl: addonEntry.transportUrl };
+    } catch (err) {
+      console.error(`Could not resolve stream addon for channel "${channel.name}": ${err.message}`);
+      return null;
+    }
+  }
+
   async function regenerate(channel) {
     if (!channel.source) {
       console.error(`Skipping schedule regeneration for "${channel.name}": no resolved addon source`);
@@ -103,7 +120,8 @@ export async function bootstrap({
     .filter((channel) => channel.enabled)
     .map((channel) => ({
       ...channel,
-      source: resolveSource(channel, installedAddonsAtStartup)
+      source: resolveSource(channel, installedAddonsAtStartup),
+      streamSource: resolveStreamSource(channel, installedAddonsAtStartup)
     }));
 
   async function runStartupRegeneration() {
@@ -120,13 +138,19 @@ export async function bootstrap({
     // login/addon discovery failed at startup or on a previous cron run) so a
     // transient outage doesn't permanently degrade the channel until a manual
     // restart.
-    const channelsNeedingSource = channels.filter((channel) => !channel.source);
+    const channelsNeedingSource = channels.filter((channel) => !channel.source || (channel.streamAddon && !channel.streamSource));
     if (channelsNeedingSource.length > 0) {
       const installedAddons = await discoverInstalledAddons();
       if (installedAddons) {
         for (const channel of channelsNeedingSource) {
-          const source = resolveSource(channel, installedAddons);
-          if (source) channel.source = source;
+          if (!channel.source) {
+            const source = resolveSource(channel, installedAddons);
+            if (source) channel.source = source;
+          }
+          if (channel.streamAddon && !channel.streamSource) {
+            const streamSource = resolveStreamSource(channel, installedAddons);
+            if (streamSource) channel.streamSource = streamSource;
+          }
         }
       }
     }
@@ -143,12 +167,13 @@ export async function bootstrap({
     channels,
     discoverInstalledAddons,
     resolveSourceImpl: resolveSource,
+    resolveStreamSourceImpl: resolveStreamSource,
     regenerateImpl: regenerate,
     readChannelsImpl,
     writeChannelsImpl
   });
 
-  const app = createAppImpl({ channels, dataDir, baseUrl, channelActions });
+  const app = createAppImpl({ channels, dataDir, baseUrl, channelActions, realDebridApiKey });
   const server = app.listen(port, () => console.log(`stremioTuner listening on port ${port}`));
 
   // Populate/refresh on-disk schedules in the background so the HTTP server

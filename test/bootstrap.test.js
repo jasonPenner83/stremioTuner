@@ -338,3 +338,65 @@ test('bootstrap wires a real channelActions instance that can add a channel and 
   assert.deepEqual(writtenChannels, [record]);
   assert.deepEqual(writtenSchedules, [record.id]);
 });
+
+test('bootstrap resolves an optional streamAddon into streamSource, independent of the catalog source', async () => {
+  const createdAppArgs = [];
+
+  await bootstrap({
+    env: { STREMIO_EMAIL: 'a@b.com', STREMIO_PASSWORD: 'pw' },
+    readChannelsImpl: async () => ([
+      channel({ id: 'with-stream', name: 'WithStream', addon: 'org.a', catalog: 'cat-a', streamAddon: 'org.torrentio' }),
+      channel({ id: 'no-stream', name: 'NoStream', addon: 'org.a', catalog: 'cat-a' })
+    ]),
+    writeChannelsImpl: async () => {},
+    getAuthKeyImpl: async () => 'auth-key',
+    getInstalledAddonsImpl: async () => [
+      { transportUrl: 'https://a/manifest.json', manifest: { id: 'org.a', catalogs: [{ id: 'cat-a', type: 'movie' }] } },
+      { transportUrl: 'https://torrentio/manifest.json', manifest: { id: 'org.torrentio', catalogs: [] } }
+    ],
+    findAddonByIdImpl: (addons, id) => {
+      const found = addons.find((a) => a.manifest.id === id);
+      if (!found) throw new Error(`addon not found: ${id}`);
+      return found;
+    },
+    resolveChannelSourceImpl: (manifest, catalogId) => manifest.catalogs.find((c) => c.id === catalogId),
+    readScheduleImpl: async () => null,
+    isScheduleFreshImpl: () => false,
+    generateChannelScheduleImpl: async ({ channel: ch }) => ({ generatedAt: 'new', items: [], channelId: ch.id }),
+    writeScheduleImpl: async () => {},
+    scheduleDailyAtImpl: () => ({ cancel() {} }),
+    createAppImpl: (args) => { createdAppArgs.push(args); return fakeApp(); }
+  });
+
+  assert.equal(createdAppArgs[0].channels.find((c) => c.id === 'with-stream').streamSource.transportUrl, 'https://torrentio/manifest.json');
+  assert.equal(createdAppArgs[0].channels.find((c) => c.id === 'no-stream').streamSource, null);
+});
+
+test('bootstrap sets streamSource: null (not a crash) when streamAddon does not resolve', async () => {
+  const createdAppArgs = [];
+
+  await bootstrap({
+    env: { STREMIO_EMAIL: 'a@b.com', STREMIO_PASSWORD: 'pw' },
+    readChannelsImpl: async () => ([channel({ id: 'x', name: 'X', addon: 'org.a', catalog: 'cat-a', streamAddon: 'org.missing' })]),
+    writeChannelsImpl: async () => {},
+    getAuthKeyImpl: async () => 'auth-key',
+    getInstalledAddonsImpl: async () => [
+      { transportUrl: 'https://a/manifest.json', manifest: { id: 'org.a', catalogs: [{ id: 'cat-a', type: 'movie' }] } }
+    ],
+    findAddonByIdImpl: (addons, id) => {
+      const found = addons.find((a) => a.manifest.id === id);
+      if (!found) throw new Error(`addon not found: ${id}`);
+      return found;
+    },
+    resolveChannelSourceImpl: (manifest, catalogId) => manifest.catalogs.find((c) => c.id === catalogId),
+    readScheduleImpl: async () => null,
+    isScheduleFreshImpl: () => false,
+    generateChannelScheduleImpl: async ({ channel: ch }) => ({ generatedAt: 'new', items: [], channelId: ch.id }),
+    writeScheduleImpl: async () => {},
+    scheduleDailyAtImpl: () => ({ cancel() {} }),
+    createAppImpl: (args) => { createdAppArgs.push(args); return fakeApp(); }
+  });
+
+  assert.equal(createdAppArgs[0].channels[0].streamSource, null);
+  assert.equal(createdAppArgs[0].channels[0].source.transportUrl, 'https://a/manifest.json');
+});
