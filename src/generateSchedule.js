@@ -36,7 +36,8 @@ export async function generateChannelSchedule({
   async function getRuntimeMs(item) {
     if (runtimeCache.has(item.id)) return runtimeCache.get(item.id);
     const meta = await addonClientImpl.fetchMeta(source.transportUrl, source.type, item.id);
-    const ms = parseRuntimeMs(meta?.runtime) ?? defaultRuntimeMs;
+    const parsed = parseRuntimeMs(meta?.runtime);
+    const ms = parsed && parsed > 0 ? parsed : defaultRuntimeMs;
     runtimeCache.set(item.id, ms);
     return ms;
   }
