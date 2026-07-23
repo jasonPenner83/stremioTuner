@@ -1,0 +1,13 @@
+services:
+  stremio-tuner:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      STREMIO_EMAIL: ${STREMIO_EMAIL}
+      STREMIO_PASSWORD: ${STREMIO_PASSWORD}
+      TZ: ${TZ:-UTC}
+      BASE_URL: ${BASE_URL:-http://localhost:8080}
+    volumes:
+      - ./data:/data
+    restart: unless-stopped

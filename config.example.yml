@@ -1,0 +1,14 @@
+# Copy this file to ./data/config.yml and edit before starting the container.
+refreshTime: "00:00"  # local time (see TZ env var) at which schedules regenerate daily
+
+channels:
+  - name: "Marvel Movies"
+    addon: "org.stremio.torrentio.addon"   # the addon manifest's "id" field — NOT a URL.
+                                            # Must match an addon actually installed on
+                                            # your Stremio account (its transportUrl,
+                                            # including any embedded debrid key, is
+                                            # looked up automatically at startup).
+    catalog: "marvel-movies"               # a catalog "id" from that addon's manifest
+    mode: "random-start"                   # "random-start" | "random"
+    minQuality: "720p"                     # "480p" | "720p" | "1080p" | "2160p"
+    language: "en"                         # "en" | "es" | "fr" | "de" | "it" | "pt"
