@@ -14,15 +14,26 @@ export function buildArgs(sourceUrl, offsetSeconds, mode) {
 export function streamViaFfmpeg({ sourceUrl, offsetSeconds, res, spawnImpl = spawn, ffmpegPath = 'ffmpeg', onLog = () => {} }) {
   return new Promise((resolve) => {
     let bytesSent = false;
+    let currentChild = null;
+
+    function onResClose() {
+      if (currentChild) currentChild.kill('SIGKILL');
+    }
+
+    res.on('close', onResClose);
+    res.on('error', (err) => {
+      onLog(`response write error: ${err.message}`);
+    });
 
     function run(mode) {
       const child = spawnImpl(ffmpegPath, buildArgs(sourceUrl, offsetSeconds, mode));
+      currentChild = child;
       let settled = false;
 
-      child.stdout.on('data', (chunk) => {
+      child.stdout.on('data', () => {
         bytesSent = true;
-        res.write(chunk);
       });
+      child.stdout.pipe(res, { end: false });
 
       child.stderr.on('data', (chunk) => {
         onLog(chunk.toString());
@@ -33,9 +44,11 @@ export function streamViaFfmpeg({ sourceUrl, offsetSeconds, res, spawnImpl = spa
         // 'exit' event on the same child; only act on the first one.
         if (settled) return;
         settled = true;
+        currentChild = null;
         if (!bytesSent && mode === 'copy') {
           run('transcode');
         } else {
+          res.removeListener('close', onResClose);
           res.end();
           resolve();
         }
@@ -53,6 +66,8 @@ export function streamViaFfmpeg({ sourceUrl, offsetSeconds, res, spawnImpl = spa
         }
         if (settled) return;
         settled = true;
+        currentChild = null;
+        res.removeListener('close', onResClose);
         res.end();
         resolve();
       });

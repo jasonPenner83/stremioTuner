@@ -8,18 +8,24 @@ function fakeChild() {
   const child = new EventEmitter();
   child.stdout = new PassThrough();
   child.stderr = new PassThrough();
+  child.killed = false;
+  child.kill = function kill(signal) {
+    child.killed = true;
+    child.killSignal = signal;
+  };
   return child;
 }
 
 function fakeRes() {
-  return {
-    headers: {},
-    written: [],
-    ended: false,
-    setHeader(name, value) { this.headers[name] = value; },
-    write(chunk) { this.written.push(chunk); },
-    end() { this.ended = true; }
-  };
+  const res = new EventEmitter();
+  res.headers = {};
+  res.written = [];
+  res.ended = false;
+  res.writable = true;
+  res.setHeader = function setHeader(name, value) { this.headers[name] = value; };
+  res.write = function write(chunk) { this.written.push(chunk); return true; };
+  res.end = function end() { this.ended = true; };
+  return res;
 }
 
 test('buildArgs constructs copy args with the seek offset', () => {
@@ -94,4 +100,31 @@ test('streamViaFfmpeg does not fall back once bytes have already been sent', asy
 
   assert.equal(children.length, 1);
   assert.deepEqual(res.written.map((c) => c.toString()), ['partial-chunk']);
+});
+
+test('streamViaFfmpeg kills the ffmpeg child when the response closes (client disconnect)', async () => {
+  const res = fakeRes();
+  const children = [];
+  const spawnImpl = () => {
+    const child = fakeChild();
+    children.push(child);
+    return child;
+  };
+
+  const promise = streamViaFfmpeg({ sourceUrl: 'http://x', offsetSeconds: 10, res, spawnImpl });
+
+  children[0].stdout.write('some-bytes');
+  await new Promise((r) => setImmediate(r));
+
+  assert.equal(children[0].killed, false);
+
+  res.emit('close');
+
+  assert.equal(children[0].killed, true);
+  assert.equal(children[0].killSignal, 'SIGKILL');
+
+  // Clean up: simulate the process actually exiting after being killed so the
+  // in-flight promise settles and doesn't leak into other tests.
+  children[0].emit('exit', null);
+  await promise;
 });
