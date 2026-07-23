@@ -1,20 +1,33 @@
 import express from 'express';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { buildM3u } from '../m3u.js';
 import { buildXmltv } from '../xmltv.js';
 import { readSchedule } from '../scheduleStore.js';
 import { selectStream } from '../streamSelect.js';
 import { fetchStreams } from '../addonClient.js';
 import { streamViaFfmpeg } from './ffmpegProxy.js';
+import { createAdminRouter } from './adminRoutes.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PUBLIC_DIR = path.join(__dirname, '..', '..', 'public');
 
 export function createApp({
   channels,
   dataDir,
   baseUrl,
+  channelActions,
   fetchStreamsImpl = fetchStreams,
   streamViaFfmpegImpl = streamViaFfmpeg,
   nowImpl = () => new Date()
 }) {
   const app = express();
+
+  app.use(express.static(PUBLIC_DIR));
+
+  if (channelActions) {
+    app.use('/admin', createAdminRouter(channelActions));
+  }
 
   app.get('/playlist.m3u', (req, res) => {
     res.setHeader('Content-Type', 'audio/x-mpegurl');

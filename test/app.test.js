@@ -7,7 +7,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { createApp } from '../src/server/app.js';
 import { writeSchedule, schedulePath } from '../src/scheduleStore.js';
 
-async function withApp(t, { channels, schedules = {}, corruptSchedules = {}, fetchStreamsImpl, streamViaFfmpegImpl, nowImpl } = {}) {
+async function withApp(t, { channels, schedules = {}, corruptSchedules = {}, fetchStreamsImpl, streamViaFfmpegImpl, nowImpl, channelActions } = {}) {
   const dataDir = await mkdtemp(path.join(tmpdir(), 'stremiotuner-'));
   for (const [channelId, schedule] of Object.entries(schedules)) {
     await writeSchedule(dataDir, channelId, schedule);
@@ -23,7 +23,8 @@ async function withApp(t, { channels, schedules = {}, corruptSchedules = {}, fet
     baseUrl: 'http://localhost:0',
     fetchStreamsImpl,
     streamViaFfmpegImpl,
-    nowImpl
+    nowImpl,
+    channelActions
   });
   const server = app.listen(0);
   await new Promise((resolve) => server.once('listening', resolve));
@@ -126,4 +127,28 @@ test('GET /stream/:channelId resolves the current item, selects a stream, and pr
   assert.equal(res.status, 200);
   assert.equal(capturedArgs.sourceUrl, 'http://good');
   assert.equal(capturedArgs.offsetSeconds, 30 * 60);
+});
+
+test('GET / serves the static admin UI', async (t) => {
+  const baseUrl = await withApp(t, { channels: [] });
+  const res = await fetch(`${baseUrl}/`);
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type') || '', /text\/html/);
+});
+
+test('admin routes are mounted and reachable when channelActions is provided', async (t) => {
+  const baseUrl = await withApp(t, {
+    channels: [],
+    channelActions: { listChannels: async () => [{ id: 'x' }] }
+  });
+  const res = await fetch(`${baseUrl}/admin/channels`);
+  const body = await res.json();
+  assert.equal(res.status, 200);
+  assert.deepEqual(body, [{ id: 'x' }]);
+});
+
+test('admin routes 404 when channelActions is not provided', async (t) => {
+  const baseUrl = await withApp(t, { channels: [] });
+  const res = await fetch(`${baseUrl}/admin/channels`);
+  assert.equal(res.status, 404);
 });
