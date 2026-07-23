@@ -81,8 +81,13 @@ export function createApp({
       let magnetCandidates = streams.filter((s) => !!s.infoHash && !s.url);
 
       if (magnetCandidates.length && realDebridApiKey) {
-        const cached = await checkInstantAvailabilityImpl(realDebridApiKey, magnetCandidates.map((s) => s.infoHash));
-        magnetCandidates = magnetCandidates.filter((s) => cached.has(s.infoHash));
+        try {
+          const cached = await checkInstantAvailabilityImpl(realDebridApiKey, magnetCandidates.map((s) => s.infoHash));
+          magnetCandidates = magnetCandidates.filter((s) => cached.has(s.infoHash));
+        } catch (err) {
+          console.error(`Real-Debrid availability check failed: ${err.message}`);
+          magnetCandidates = [];
+        }
       } else {
         magnetCandidates = [];
       }

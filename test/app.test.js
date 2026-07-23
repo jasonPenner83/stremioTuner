@@ -218,6 +218,21 @@ test('GET /stream/:channelId 502s (not 500) when Real-Debrid resolution fails on
   assert.equal(res.status, 502);
 });
 
+test('GET /stream/:channelId 502s (not 500) when Real-Debrid instant availability check fails', async (t) => {
+  const now = new Date('2026-07-22T00:30:00.000Z');
+  const schedule = { generatedAt: '2026-07-22T00:00:00.000Z', items: [{ id: 'tt1', title: 'Current', start: '2026-07-22T00:00:00.000Z', end: '2026-07-22T02:00:00.000Z' }] };
+  const baseUrl = await withApp(t, {
+    channels: [{ id: 'x', name: 'X', minQuality: '480p', language: 'en', source: { transportUrl: 'https://addon/manifest.json', type: 'movie' }, streamSource: { transportUrl: 'https://torrentio/manifest.json' } }],
+    schedules: { x: schedule },
+    fetchStreamsImpl: async () => [{ title: '1080p 👤 20', infoHash: 'abc123' }],
+    checkInstantAvailabilityImpl: async () => { throw new Error('RD outage'); },
+    nowImpl: () => now,
+    realDebridApiKey: 'rd-key'
+  });
+  const res = await fetch(`${baseUrl}/stream/x`);
+  assert.equal(res.status, 502);
+});
+
 test('GET / serves the static admin UI', async (t) => {
   const baseUrl = await withApp(t, { channels: [] });
   const res = await fetch(`${baseUrl}/`);
