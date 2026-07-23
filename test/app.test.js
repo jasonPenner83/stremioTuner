@@ -3,13 +3,19 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { createApp } from '../src/server/app.js';
-import { writeSchedule } from '../src/scheduleStore.js';
+import { writeSchedule, schedulePath } from '../src/scheduleStore.js';
 
-async function withApp(t, { channels, schedules = {}, fetchStreamsImpl, streamViaFfmpegImpl, nowImpl } = {}) {
+async function withApp(t, { channels, schedules = {}, corruptSchedules = {}, fetchStreamsImpl, streamViaFfmpegImpl, nowImpl } = {}) {
   const dataDir = await mkdtemp(path.join(tmpdir(), 'stremiotuner-'));
   for (const [channelId, schedule] of Object.entries(schedules)) {
     await writeSchedule(dataDir, channelId, schedule);
+  }
+  for (const [channelId, rawContent] of Object.entries(corruptSchedules)) {
+    const filePath = schedulePath(dataDir, channelId);
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, rawContent);
   }
   const app = createApp({
     channels,
@@ -43,6 +49,15 @@ test('GET /epg.xml includes programme entries from the persisted schedule', asyn
   const res = await fetch(`${baseUrl}/epg.xml`);
   const text = await res.text();
   assert.match(text, /Iron Man/);
+});
+
+test('GET /epg.xml returns 500 without crashing when the schedule file is corrupted', async (t) => {
+  const baseUrl = await withApp(t, {
+    channels: [{ id: 'x', name: 'X' }],
+    corruptSchedules: { x: '{ this is not valid JSON' }
+  });
+  const res = await fetch(`${baseUrl}/epg.xml`);
+  assert.equal(res.status, 500);
 });
 
 test('GET /stream/:channelId 404s for an unknown channel', async (t) => {
@@ -81,6 +96,19 @@ test('GET /stream/:channelId 502s when no stream passes selection', async (t) =>
   });
   const res = await fetch(`${baseUrl}/stream/x`);
   assert.equal(res.status, 502);
+});
+
+test('GET /stream/:channelId returns 500 without crashing when fetchStreamsImpl rejects', async (t) => {
+  const now = new Date('2026-07-22T01:00:00.000Z');
+  const schedule = { generatedAt: '2026-07-22T00:00:00.000Z', items: [{ id: 'tt1', title: 'Current', start: '2026-07-22T00:00:00.000Z', end: '2026-07-22T02:00:00.000Z' }] };
+  const baseUrl = await withApp(t, {
+    channels: [{ id: 'x', name: 'X', minQuality: '480p', language: 'en', source: { transportUrl: 'https://addon/manifest.json', type: 'movie' } }],
+    schedules: { x: schedule },
+    fetchStreamsImpl: async () => { throw new Error('addon endpoint unreachable'); },
+    nowImpl: () => now
+  });
+  const res = await fetch(`${baseUrl}/stream/x`);
+  assert.equal(res.status, 500);
 });
 
 test('GET /stream/:channelId resolves the current item, selects a stream, and proxies via ffmpeg with the right offset', async (t) => {

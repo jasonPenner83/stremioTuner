@@ -22,43 +22,55 @@ export function createApp({
   });
 
   app.get('/epg.xml', async (req, res) => {
-    const withSchedules = await Promise.all(channels.map(async (ch) => ({
-      ...ch,
-      schedule: await readSchedule(dataDir, ch.id)
-    })));
-    res.setHeader('Content-Type', 'application/xml');
-    res.send(buildXmltv(withSchedules));
+    try {
+      const withSchedules = await Promise.all(channels.map(async (ch) => ({
+        ...ch,
+        schedule: await readSchedule(dataDir, ch.id)
+      })));
+      res.setHeader('Content-Type', 'application/xml');
+      res.send(buildXmltv(withSchedules));
+    } catch (err) {
+      console.error('Failed to build EPG:', err);
+      res.status(500).end('Internal server error');
+    }
   });
 
   app.get('/stream/:channelId', async (req, res) => {
-    const channel = channels.find((c) => c.id === req.params.channelId);
-    if (!channel) {
-      res.status(404).end('Unknown channel');
-      return;
-    }
+    try {
+      const channel = channels.find((c) => c.id === req.params.channelId);
+      if (!channel) {
+        res.status(404).end('Unknown channel');
+        return;
+      }
 
-    const schedule = await readSchedule(dataDir, channel.id);
-    const now = nowImpl().getTime();
-    const item = schedule?.items.find((i) => new Date(i.start).getTime() <= now && now < new Date(i.end).getTime());
-    if (!item) {
-      res.status(404).end('No program currently scheduled');
-      return;
-    }
+      const schedule = await readSchedule(dataDir, channel.id);
+      const now = nowImpl().getTime();
+      const item = schedule?.items.find((i) => new Date(i.start).getTime() <= now && now < new Date(i.end).getTime());
+      if (!item) {
+        res.status(404).end('No program currently scheduled');
+        return;
+      }
 
-    if (!channel.source) {
-      res.status(502).end('Channel source unavailable (Stremio addon discovery failed)');
-      return;
-    }
+      if (!channel.source) {
+        res.status(502).end('Channel source unavailable (Stremio addon discovery failed)');
+        return;
+      }
 
-    const offsetSeconds = (now - new Date(item.start).getTime()) / 1000;
-    const streams = await fetchStreamsImpl(channel.source.transportUrl, channel.source.type, item.id);
-    const selected = selectStream(streams, { minQuality: channel.minQuality, language: channel.language });
-    if (!selected) {
-      res.status(502).end('No playable stream found');
-      return;
-    }
+      const offsetSeconds = (now - new Date(item.start).getTime()) / 1000;
+      const streams = await fetchStreamsImpl(channel.source.transportUrl, channel.source.type, item.id);
+      const selected = selectStream(streams, { minQuality: channel.minQuality, language: channel.language });
+      if (!selected) {
+        res.status(502).end('No playable stream found');
+        return;
+      }
 
-    await streamViaFfmpegImpl({ sourceUrl: selected.url, offsetSeconds, res });
+      await streamViaFfmpegImpl({ sourceUrl: selected.url, offsetSeconds, res });
+    } catch (err) {
+      console.error('Failed to serve stream:', err);
+      if (!res.headersSent) {
+        res.status(500).end('Internal server error');
+      }
+    }
   });
 
   return app;
