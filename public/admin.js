@@ -53,6 +53,27 @@ function wireCopyButtons() {
   });
 }
 
+async function loadSettings() {
+  const settings = await fetchJson('/admin/settings');
+  document.getElementById('default-stream-addon').value = settings.defaultStreamAddon || '';
+}
+
+function wireSettingsForm() {
+  document.getElementById('save-settings').addEventListener('click', async () => {
+    const value = document.getElementById('default-stream-addon').value.trim();
+    try {
+      await fetchJson('/admin/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ defaultStreamAddon: value || null })
+      });
+      hideBanner();
+    } catch (err) {
+      showBanner(err.message);
+    }
+  });
+}
+
 async function loadChannels() {
   const channels = await fetchJson('/admin/channels');
   const body = document.getElementById('channels-body');
@@ -62,7 +83,7 @@ async function loadChannels() {
       <td>${selectHtml('mode', MODES, ch.mode)}</td>
       <td>${selectHtml('minQuality', QUALITIES, ch.minQuality)}</td>
       <td>${selectHtml('language', LANGUAGES, ch.language)}</td>
-      <td><input type="text" data-field="streamAddon" value="${escapeHtml(ch.streamAddon || '')}" placeholder="org.stremio.torrentio.addon"></td>
+      <td><input type="text" data-field="streamAddon" value="${escapeHtml(ch.streamAddon || '')}" placeholder="Overrides global default"></td>
       <td><input type="checkbox" data-field="enabled" ${ch.enabled ? 'checked' : ''}></td>
     </tr>
   `).join('');
@@ -105,7 +126,7 @@ function catalogRowHtml(cat) {
           ${selectHtml('mode', MODES, 'random-start')}
           ${selectHtml('minQuality', QUALITIES, '720p')}
           ${selectHtml('language', LANGUAGES, 'en')}
-          <input type="text" data-field="streamAddon" placeholder="Stream addon ID (optional, e.g. org.stremio.torrentio.addon)">
+          <input type="text" data-field="streamAddon" placeholder="Stream addon ID (optional — overrides the global default)">
           <button data-action="submit">Save</button>
         </div>
       </td>
@@ -170,9 +191,11 @@ async function loadCatalogs() {
 }
 
 async function loadAll() {
+  await loadSettings();
   await loadChannels();
   await loadCatalogs();
 }
 
 wireCopyButtons();
+wireSettingsForm();
 loadAll();
