@@ -17,6 +17,7 @@ function baseDeps(overrides = {}) {
       if (!catalog) return null;
       return { transportUrl: addonEntry.transportUrl, type: catalog.type };
     },
+    resolveStreamSourceImpl: () => null,
     regenerateImpl: async () => {},
     readChannelsImpl: async () => [],
     writeChannelsImpl: async () => {},
@@ -218,14 +219,15 @@ test('addChannel resolves an optional streamAddon into streamSource on the live 
   assert.equal(channels[0].streamSource.transportUrl, 'https://torrentio/manifest.json');
 });
 
-test('addChannel sets streamSource: null when streamAddon is omitted', async () => {
+test('addChannel resolves streamSource via resolveStreamSourceImpl even when streamAddon is omitted (global default may apply)', async () => {
   const channels = [];
+  let calledWith = null;
   const actions = createChannelActions({
     dataDir: '/data',
     channels,
     discoverInstalledAddons: async () => ([]),
     resolveSourceImpl: () => ({ transportUrl: 'https://cinemeta/manifest.json', type: 'movie' }),
-    resolveStreamSourceImpl: () => { throw new Error('should not be called'); },
+    resolveStreamSourceImpl: (channel) => { calledWith = channel.streamAddon; return null; },
     regenerateImpl: async () => {},
     readChannelsImpl: async () => [],
     writeChannelsImpl: async () => {}
@@ -236,6 +238,7 @@ test('addChannel sets streamSource: null when streamAddon is omitted', async () 
   });
 
   assert.equal(record.streamAddon, undefined);
+  assert.equal(calledWith, undefined);
   assert.equal(channels[0].streamSource, null);
 });
 

@@ -55,7 +55,7 @@ export function createChannelActions({
       throw new ValidationError(`Could not resolve addon "${addon}" / catalog "${catalog}" from your installed Stremio addons`);
     }
 
-    const streamSource = streamAddon ? resolveStreamSourceImpl({ streamAddon, name }, installedAddons) : null;
+    const streamSource = resolveStreamSourceImpl({ streamAddon, name }, installedAddons);
 
     const record = { id, addon, catalog, name, mode, minQuality, language, enabled: true, ...(streamAddon ? { streamAddon } : {}) };
     await writeChannelsImpl(dataDir, [...persisted, record]);
@@ -103,7 +103,7 @@ export function createChannelActions({
     if (liveIndex === -1) {
       const installedAddons = await discoverInstalledAddons();
       const source = resolveSourceImpl(updated, installedAddons);
-      const streamSource = updated.streamAddon ? resolveStreamSourceImpl(updated, installedAddons) : null;
+      const streamSource = resolveStreamSourceImpl(updated, installedAddons);
       const liveChannel = { ...updated, source, streamSource };
       channels.push(liveChannel);
       await regenerateImpl(liveChannel);
