@@ -400,3 +400,91 @@ test('bootstrap sets streamSource: null (not a crash) when streamAddon does not 
   assert.equal(createdAppArgs[0].channels[0].streamSource, null);
   assert.equal(createdAppArgs[0].channels[0].source.transportUrl, 'https://a/manifest.json');
 });
+
+test('bootstrap resolves streamSource from the global default stream addon when a channel has no per-channel override', async () => {
+  const createdAppArgs = [];
+
+  await bootstrap({
+    env: { STREMIO_EMAIL: 'a@b.com', STREMIO_PASSWORD: 'pw' },
+    readChannelsImpl: async () => ([channel({ id: 'x', name: 'X', addon: 'org.a', catalog: 'cat-a' })]),
+    writeChannelsImpl: async () => {},
+    readSettingsImpl: async () => ({ defaultStreamAddon: 'org.torrentio' }),
+    writeSettingsImpl: async () => {},
+    getAuthKeyImpl: async () => 'auth-key',
+    getInstalledAddonsImpl: async () => [
+      { transportUrl: 'https://a/manifest.json', manifest: { id: 'org.a', catalogs: [{ id: 'cat-a', type: 'movie' }] } },
+      { transportUrl: 'https://torrentio/manifest.json', manifest: { id: 'org.torrentio', catalogs: [] } }
+    ],
+    findAddonByIdImpl: (addons, id) => {
+      const found = addons.find((a) => a.manifest.id === id);
+      if (!found) throw new Error(`addon not found: ${id}`);
+      return found;
+    },
+    resolveChannelSourceImpl: (manifest, catalogId) => manifest.catalogs.find((c) => c.id === catalogId),
+    readScheduleImpl: async () => null,
+    isScheduleFreshImpl: () => false,
+    generateChannelScheduleImpl: async ({ channel: ch }) => ({ generatedAt: 'new', items: [], channelId: ch.id }),
+    writeScheduleImpl: async () => {},
+    scheduleDailyAtImpl: () => ({ cancel() {} }),
+    createAppImpl: (args) => { createdAppArgs.push(args); return fakeApp(); }
+  });
+
+  assert.equal(createdAppArgs[0].channels[0].streamSource.transportUrl, 'https://torrentio/manifest.json');
+  assert.ok(createdAppArgs[0].settingsActions);
+});
+
+test('bootstrap prefers a channel\'s own streamAddon over the global default', async () => {
+  const createdAppArgs = [];
+
+  await bootstrap({
+    env: { STREMIO_EMAIL: 'a@b.com', STREMIO_PASSWORD: 'pw' },
+    readChannelsImpl: async () => ([channel({ id: 'x', name: 'X', addon: 'org.a', catalog: 'cat-a', streamAddon: 'org.other' })]),
+    writeChannelsImpl: async () => {},
+    readSettingsImpl: async () => ({ defaultStreamAddon: 'org.torrentio' }),
+    writeSettingsImpl: async () => {},
+    getAuthKeyImpl: async () => 'auth-key',
+    getInstalledAddonsImpl: async () => [
+      { transportUrl: 'https://a/manifest.json', manifest: { id: 'org.a', catalogs: [{ id: 'cat-a', type: 'movie' }] } },
+      { transportUrl: 'https://torrentio/manifest.json', manifest: { id: 'org.torrentio', catalogs: [] } },
+      { transportUrl: 'https://other/manifest.json', manifest: { id: 'org.other', catalogs: [] } }
+    ],
+    findAddonByIdImpl: (addons, id) => {
+      const found = addons.find((a) => a.manifest.id === id);
+      if (!found) throw new Error(`addon not found: ${id}`);
+      return found;
+    },
+    resolveChannelSourceImpl: (manifest, catalogId) => manifest.catalogs.find((c) => c.id === catalogId),
+    readScheduleImpl: async () => null,
+    isScheduleFreshImpl: () => false,
+    generateChannelScheduleImpl: async ({ channel: ch }) => ({ generatedAt: 'new', items: [], channelId: ch.id }),
+    writeScheduleImpl: async () => {},
+    scheduleDailyAtImpl: () => ({ cancel() {} }),
+    createAppImpl: (args) => { createdAppArgs.push(args); return fakeApp(); }
+  });
+
+  assert.equal(createdAppArgs[0].channels[0].streamSource.transportUrl, 'https://other/manifest.json');
+});
+
+test('bootstrap wires a real settingsActions instance backed by the shared settings object', async () => {
+  const result = await bootstrap({
+    env: { STREMIO_EMAIL: 'a@b.com', STREMIO_PASSWORD: 'pw' },
+    readChannelsImpl: async () => [],
+    writeChannelsImpl: async () => {},
+    readSettingsImpl: async () => ({}),
+    writeSettingsImpl: async () => {},
+    getAuthKeyImpl: async () => 'auth-key',
+    getInstalledAddonsImpl: async () => [],
+    findAddonByIdImpl: (addons, id) => { throw new Error(`addon not found: ${id}`); },
+    resolveChannelSourceImpl: () => null,
+    readScheduleImpl: async () => null,
+    isScheduleFreshImpl: () => false,
+    generateChannelScheduleImpl: async () => ({ generatedAt: 'new', items: [] }),
+    writeScheduleImpl: async () => {},
+    scheduleDailyAtImpl: () => ({ cancel() {} }),
+    createAppImpl: () => fakeApp()
+  });
+
+  assert.ok(result.settingsActions);
+  const settings = await result.settingsActions.getSettings();
+  assert.deepEqual(settings, {});
+});

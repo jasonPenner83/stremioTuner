@@ -6,6 +6,8 @@ import { readSchedule, writeSchedule, isScheduleFresh } from './scheduleStore.js
 import { scheduleDailyAt } from './scheduling.js';
 import { createApp } from './server/app.js';
 import { createChannelActions } from './channelActions.js';
+import { readSettings, writeSettings } from './settingsStore.js';
+import { createSettingsActions } from './settingsActions.js';
 
 export async function withRetries(fn, { retries = 3, delayMs = 1000, sleepImpl = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) } = {}) {
   let lastErr;
@@ -24,6 +26,8 @@ export async function bootstrap({
   env = process.env,
   readChannelsImpl = readChannels,
   writeChannelsImpl = writeChannels,
+  readSettingsImpl = readSettings,
+  writeSettingsImpl = writeSettings,
   getAuthKeyImpl = getAuthKey,
   getInstalledAddonsImpl = getInstalledAddons,
   findAddonByIdImpl = findAddonById,
@@ -36,6 +40,7 @@ export async function bootstrap({
   scheduleDailyAtImpl = scheduleDailyAt,
   createAppImpl = createApp,
   createChannelActionsImpl = createChannelActions,
+  createSettingsActionsImpl = createSettingsActions,
   sleepImpl
 } = {}) {
   const dataDir = env.DATA_DIR || '/data';
@@ -48,6 +53,8 @@ export async function bootstrap({
   if (!realDebridApiKey) {
     console.warn('REALDEBRID_API_KEY not set — magnet-only stream candidates will be ignored.');
   }
+
+  const settings = await readSettingsImpl(dataDir);
 
   // Attempts to log in and fetch the installed addon list. On failure (after
   // retries), invalidates the cached auth key so a stale/expired key isn't
@@ -86,10 +93,11 @@ export async function bootstrap({
   }
 
   function resolveStreamSource(channel, installedAddons) {
-    if (!channel.streamAddon) return null;
+    const streamAddon = channel.streamAddon || settings.defaultStreamAddon;
+    if (!streamAddon) return null;
     if (!installedAddons) return null;
     try {
-      const addonEntry = findAddonByIdImpl(installedAddons, channel.streamAddon);
+      const addonEntry = findAddonByIdImpl(installedAddons, streamAddon);
       return { transportUrl: addonEntry.transportUrl };
     } catch (err) {
       console.error(`Could not resolve stream addon for channel "${channel.name}": ${err.message}`);
@@ -138,7 +146,7 @@ export async function bootstrap({
     // login/addon discovery failed at startup or on a previous cron run) so a
     // transient outage doesn't permanently degrade the channel until a manual
     // restart.
-    const channelsNeedingSource = channels.filter((channel) => !channel.source || (channel.streamAddon && !channel.streamSource));
+    const channelsNeedingSource = channels.filter((channel) => !channel.source || ((channel.streamAddon || settings.defaultStreamAddon) && !channel.streamSource));
     if (channelsNeedingSource.length > 0) {
       const installedAddons = await discoverInstalledAddons();
       if (installedAddons) {
@@ -147,7 +155,7 @@ export async function bootstrap({
             const source = resolveSource(channel, installedAddons);
             if (source) channel.source = source;
           }
-          if (channel.streamAddon && !channel.streamSource) {
+          if ((channel.streamAddon || settings.defaultStreamAddon) && !channel.streamSource) {
             const streamSource = resolveStreamSource(channel, installedAddons);
             if (streamSource) channel.streamSource = streamSource;
           }
@@ -173,7 +181,17 @@ export async function bootstrap({
     writeChannelsImpl
   });
 
-  const app = createAppImpl({ channels, dataDir, baseUrl, channelActions, realDebridApiKey });
+  const settingsActions = createSettingsActionsImpl({
+    dataDir,
+    settings,
+    channels,
+    discoverInstalledAddons,
+    resolveStreamSourceImpl: resolveStreamSource,
+    readSettingsImpl,
+    writeSettingsImpl
+  });
+
+  const app = createAppImpl({ channels, dataDir, baseUrl, channelActions, settingsActions, realDebridApiKey });
   const server = app.listen(port, () => console.log(`stremioTuner listening on port ${port}`));
 
   // Populate/refresh on-disk schedules in the background so the HTTP server
@@ -183,5 +201,5 @@ export async function bootstrap({
     console.error(`Startup schedule regeneration failed: ${err.message}`);
   });
 
-  return { app, channels, server, startupRegenerationDone, channelActions };
+  return { app, channels, server, startupRegenerationDone, channelActions, settingsActions };
 }
