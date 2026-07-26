@@ -111,7 +111,7 @@ export function createChannelActions({
       Object.assign(channels[liveIndex], updated);
       if ('streamAddon' in allowedPatch) {
         const installedAddons = await discoverInstalledAddons();
-        channels[liveIndex].streamSource = updated.streamAddon ? resolveStreamSourceImpl(updated, installedAddons) : null;
+        channels[liveIndex].streamSource = resolveStreamSourceImpl(updated, installedAddons);
       }
       await regenerateImpl(channels[liveIndex]);
     }

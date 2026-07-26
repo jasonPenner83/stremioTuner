@@ -264,3 +264,27 @@ test('updateChannel re-resolves streamSource when streamAddon is patched on an a
   assert.equal(channels[0].streamSource.transportUrl, 'https://torrentio/manifest.json');
   assert.equal(regeneratedId, 'x');
 });
+
+test('updateChannel clearing streamAddon on an already-enabled channel falls back to whatever resolveStreamSourceImpl resolves (e.g. a global default), not null', async () => {
+  const channels = [{ id: 'x', addon: 'cinemeta', catalog: 'top', name: 'X', mode: 'random', minQuality: '480p', language: 'en', enabled: true, streamAddon: 'org.other', source: { transportUrl: 'https://cinemeta/manifest.json', type: 'movie' }, streamSource: { transportUrl: 'https://other/manifest.json' } }];
+  let regeneratedId = null;
+  const actions = createChannelActions({
+    dataDir: '/data',
+    channels,
+    discoverInstalledAddons: async () => ([{ manifest: { id: 'org.default' }, transportUrl: 'https://default-addon/manifest.json' }]),
+    resolveSourceImpl: () => ({ transportUrl: 'https://cinemeta/manifest.json', type: 'movie' }),
+    resolveStreamSourceImpl: (channel) => {
+      // simulates bootstrap.js's resolveStreamSource closure falling back to a global default
+      // when the channel has no streamAddon override of its own
+      return channel.streamAddon ? { transportUrl: 'https://other/manifest.json' } : { transportUrl: 'https://default-addon/manifest.json' };
+    },
+    regenerateImpl: async (ch) => { regeneratedId = ch.id; },
+    readChannelsImpl: async () => ([{ id: 'x', addon: 'cinemeta', catalog: 'top', name: 'X', mode: 'random', minQuality: '480p', language: 'en', enabled: true, streamAddon: 'org.other' }]),
+    writeChannelsImpl: async () => {}
+  });
+
+  await actions.updateChannel('x', { streamAddon: '' });
+
+  assert.equal(channels[0].streamSource.transportUrl, 'https://default-addon/manifest.json');
+  assert.equal(regeneratedId, 'x');
+});
