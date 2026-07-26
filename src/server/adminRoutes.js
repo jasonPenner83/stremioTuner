@@ -1,7 +1,7 @@
 import express from 'express';
 import { ValidationError, NotFoundError } from '../channelActions.js';
 
-export function createAdminRouter(channelActions) {
+export function createAdminRouter(channelActions, settingsActions) {
   const router = express.Router();
   router.use(express.json());
 
@@ -56,6 +56,32 @@ export function createAdminRouter(channelActions) {
       res.status(500).json({ error: 'Internal server error' });
     }
   });
+
+  if (settingsActions) {
+    router.get('/settings', async (req, res) => {
+      try {
+        const settings = await settingsActions.getSettings();
+        res.json(settings);
+      } catch (err) {
+        console.error('Failed to get settings:', err);
+        res.status(500).json({ error: 'Internal server error' });
+      }
+    });
+
+    router.patch('/settings', async (req, res) => {
+      try {
+        const updated = await settingsActions.updateSettings(req.body || {});
+        res.json(updated);
+      } catch (err) {
+        if (err instanceof ValidationError) {
+          res.status(400).json({ error: err.message });
+          return;
+        }
+        console.error('Failed to update settings:', err);
+        res.status(500).json({ error: 'Internal server error' });
+      }
+    });
+  }
 
   // Error-handling middleware for body-parsing errors
   router.use((err, req, res, next) => {

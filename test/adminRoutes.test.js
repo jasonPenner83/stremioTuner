@@ -4,9 +4,9 @@ import express from 'express';
 import { createAdminRouter } from '../src/server/adminRoutes.js';
 import { ValidationError, NotFoundError } from '../src/channelActions.js';
 
-async function withRouter(t, channelActions) {
+async function withRouter(t, channelActions, settingsActions) {
   const app = express();
-  app.use('/admin', createAdminRouter(channelActions));
+  app.use('/admin', createAdminRouter(channelActions, settingsActions));
   const server = app.listen(0);
   await new Promise((resolve) => server.once('listening', resolve));
   const port = server.address().port;
@@ -113,4 +113,46 @@ test('POST /admin/channels returns 400 for malformed JSON body', async (t) => {
   const body = await res.json();
   assert.equal(typeof body.error, 'string');
   assert.match(body.error, /[Mm]alformed/);
+});
+
+test('GET /admin/settings proxies to settingsActions.getSettings', async (t) => {
+  const baseUrl = await withRouter(t, {}, { getSettings: async () => ({ defaultStreamAddon: 'org.torrentio' }) });
+  const res = await fetch(`${baseUrl}/settings`);
+  const body = await res.json();
+  assert.equal(res.status, 200);
+  assert.deepEqual(body, { defaultStreamAddon: 'org.torrentio' });
+});
+
+test('PATCH /admin/settings returns the updated settings', async (t) => {
+  const baseUrl = await withRouter(t, {}, {
+    updateSettings: async (patch) => ({ defaultStreamAddon: patch.defaultStreamAddon })
+  });
+  const res = await fetch(`${baseUrl}/settings`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ defaultStreamAddon: 'org.torrentio' })
+  });
+  const body = await res.json();
+  assert.equal(res.status, 200);
+  assert.deepEqual(body, { defaultStreamAddon: 'org.torrentio' });
+});
+
+test('PATCH /admin/settings returns 400 when settingsActions throws ValidationError', async (t) => {
+  const baseUrl = await withRouter(t, {}, {
+    updateSettings: async () => { throw new ValidationError('bad input'); }
+  });
+  const res = await fetch(`${baseUrl}/settings`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ defaultStreamAddon: 42 })
+  });
+  const body = await res.json();
+  assert.equal(res.status, 400);
+  assert.equal(body.error, 'bad input');
+});
+
+test('routes under /admin/settings are not registered when settingsActions is omitted', async (t) => {
+  const baseUrl = await withRouter(t, { listChannels: async () => [] });
+  const res = await fetch(`${baseUrl}/settings`);
+  assert.equal(res.status, 404);
 });

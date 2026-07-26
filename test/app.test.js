@@ -7,7 +7,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { createApp } from '../src/server/app.js';
 import { writeSchedule, schedulePath } from '../src/scheduleStore.js';
 
-async function withApp(t, { channels, schedules = {}, corruptSchedules = {}, fetchStreamsImpl, streamViaFfmpegImpl, nowImpl, channelActions, realDebridApiKey, checkInstantAvailabilityImpl, resolveStreamImpl } = {}) {
+async function withApp(t, { channels, schedules = {}, corruptSchedules = {}, fetchStreamsImpl, streamViaFfmpegImpl, nowImpl, channelActions, settingsActions, realDebridApiKey, checkInstantAvailabilityImpl, resolveStreamImpl } = {}) {
   const dataDir = await mkdtemp(path.join(tmpdir(), 'stremiotuner-'));
   for (const [channelId, schedule] of Object.entries(schedules)) {
     await writeSchedule(dataDir, channelId, schedule);
@@ -25,6 +25,7 @@ async function withApp(t, { channels, schedules = {}, corruptSchedules = {}, fet
     streamViaFfmpegImpl,
     nowImpl,
     channelActions,
+    settingsActions,
     realDebridApiKey,
     checkInstantAvailabilityImpl,
     resolveStreamImpl
@@ -255,4 +256,16 @@ test('admin routes 404 when channelActions is not provided', async (t) => {
   const baseUrl = await withApp(t, { channels: [] });
   const res = await fetch(`${baseUrl}/admin/channels`);
   assert.equal(res.status, 404);
+});
+
+test('GET /admin/settings is reachable through createApp when settingsActions is provided', async (t) => {
+  const baseUrl = await withApp(t, {
+    channels: [],
+    channelActions: { listChannels: async () => [] },
+    settingsActions: { getSettings: async () => ({ defaultStreamAddon: 'org.torrentio' }) }
+  });
+  const res = await fetch(`${baseUrl}/admin/settings`);
+  const body = await res.json();
+  assert.equal(res.status, 200);
+  assert.deepEqual(body, { defaultStreamAddon: 'org.torrentio' });
 });

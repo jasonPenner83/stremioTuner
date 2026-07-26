@@ -18,6 +18,7 @@ export function createApp({
   dataDir,
   baseUrl,
   channelActions,
+  settingsActions,
   fetchStreamsImpl = fetchStreams,
   streamViaFfmpegImpl = streamViaFfmpeg,
   checkInstantAvailabilityImpl = checkInstantAvailability,
@@ -30,7 +31,7 @@ export function createApp({
   app.use(express.static(PUBLIC_DIR));
 
   if (channelActions) {
-    app.use('/admin', createAdminRouter(channelActions));
+    app.use('/admin', createAdminRouter(channelActions, settingsActions));
   }
 
   app.get('/playlist.m3u', (req, res) => {
