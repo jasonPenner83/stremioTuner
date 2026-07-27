@@ -124,3 +124,58 @@ test('resolveStream throws when no link is produced after selecting files', asyn
   };
   await assert.rejects(() => resolveStream('key', 'abc123', {}, { fetchImpl }), /No link produced/);
 });
+
+test('resolveStream throws when the unrestricted file is too small on the reuse-by-hash path (likely a takedown placeholder)', async () => {
+  const fetchImpl = async (url) => {
+    if (url === 'https://api.real-debrid.com/rest/1.0/torrents') {
+      return { ok: true, json: async () => ([{ hash: 'ABC123', links: ['https://rd/link1'] }]) };
+    }
+    if (url === 'https://api.real-debrid.com/rest/1.0/unrestrict/link') {
+      return { ok: true, json: async () => ({ download: 'https://direct/placeholder.mkv', filesize: 2 * 1024 * 1024 }) };
+    }
+    throw new Error(`unexpected call to ${url}`);
+  };
+  await assert.rejects(() => resolveStream('key', 'abc123', {}, { fetchImpl }), /too small/);
+});
+
+test('resolveStream throws when the unrestricted file is too small on the fresh add/select/unrestrict path', async () => {
+  const calls = [];
+  const fetchImpl = async (url) => {
+    calls.push(url);
+    if (url === 'https://api.real-debrid.com/rest/1.0/torrents') {
+      return { ok: true, json: async () => ([]) };
+    }
+    if (url === 'https://api.real-debrid.com/rest/1.0/torrents/addMagnet') {
+      return { ok: true, json: async () => ({ id: 'tid1' }) };
+    }
+    if (url === 'https://api.real-debrid.com/rest/1.0/torrents/info/tid1') {
+      const infoCallIndex = calls.filter((c) => c === url).length;
+      if (infoCallIndex === 1) {
+        return { ok: true, json: async () => ({ files: [{ id: 1, path: '/Movie.mkv', bytes: 5000 }] }) };
+      }
+      return { ok: true, json: async () => ({ links: ['https://rd/link2'] }) };
+    }
+    if (url === 'https://api.real-debrid.com/rest/1.0/torrents/selectFiles/tid1') {
+      return { ok: true, json: async () => ({}) };
+    }
+    if (url === 'https://api.real-debrid.com/rest/1.0/unrestrict/link') {
+      return { ok: true, json: async () => ({ download: 'https://direct/placeholder.mkv', filesize: 2 * 1024 * 1024 }) };
+    }
+    throw new Error(`unexpected call to ${url}`);
+  };
+  await assert.rejects(() => resolveStream('key', 'abc123', {}, { fetchImpl }), /too small/);
+});
+
+test('resolveStream resolves normally when filesize is at or above the minimum threshold', async () => {
+  const fetchImpl = async (url) => {
+    if (url === 'https://api.real-debrid.com/rest/1.0/torrents') {
+      return { ok: true, json: async () => ([{ hash: 'ABC123', links: ['https://rd/link1'] }]) };
+    }
+    if (url === 'https://api.real-debrid.com/rest/1.0/unrestrict/link') {
+      return { ok: true, json: async () => ({ download: 'https://direct/play.mkv', filesize: 500 * 1024 * 1024 }) };
+    }
+    throw new Error(`unexpected call to ${url}`);
+  };
+  const result = await resolveStream('key', 'abc123', {}, { fetchImpl });
+  assert.equal(result, 'https://direct/play.mkv');
+});

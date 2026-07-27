@@ -1,5 +1,7 @@
 const API_BASE = 'https://api.real-debrid.com/rest/1.0';
 
+export const MIN_PLAYABLE_FILE_BYTES = 50 * 1024 * 1024;
+
 function authHeaders(apiKey) {
   return { Authorization: `Bearer ${apiKey}` };
 }
@@ -87,6 +89,9 @@ async function unrestrictLink(apiKey, link, fetchImpl) {
   });
   if (!res.ok) throw new Error(`unrestrict/link failed (${res.status})`);
   const data = await res.json();
+  if (typeof data.filesize === 'number' && data.filesize < MIN_PLAYABLE_FILE_BYTES) {
+    throw new Error(`Resolved file too small (likely a takedown placeholder): ${data.filesize} bytes`);
+  }
   return data.download;
 }
 
