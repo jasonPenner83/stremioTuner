@@ -100,6 +100,32 @@ test('PATCH /admin/channels/:id returns 404 when channelActions throws NotFoundE
   assert.equal(body.error, 'no such channel');
 });
 
+test('DELETE /admin/channels/:id returns 204 on success', async (t) => {
+  const baseUrl = await withRouter(t, {
+    deleteChannel: async () => {}
+  });
+  const res = await fetch(`${baseUrl}/channels/x`, { method: 'DELETE' });
+  assert.equal(res.status, 204);
+});
+
+test('DELETE /admin/channels/:id returns 404 when channelActions throws NotFoundError', async (t) => {
+  const baseUrl = await withRouter(t, {
+    deleteChannel: async () => { throw new NotFoundError('no such channel'); }
+  });
+  const res = await fetch(`${baseUrl}/channels/unknown`, { method: 'DELETE' });
+  const body = await res.json();
+  assert.equal(res.status, 404);
+  assert.equal(body.error, 'no such channel');
+});
+
+test('DELETE /admin/channels/:id returns 500 on an unexpected error', async (t) => {
+  const baseUrl = await withRouter(t, {
+    deleteChannel: async () => { throw new Error('disk exploded'); }
+  });
+  const res = await fetch(`${baseUrl}/channels/x`, { method: 'DELETE' });
+  assert.equal(res.status, 500);
+});
+
 test('POST /admin/channels returns 400 for malformed JSON body', async (t) => {
   const baseUrl = await withRouter(t, {
     addChannel: async () => ({ id: 'new-id' })

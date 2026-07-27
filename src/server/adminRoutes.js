@@ -57,6 +57,20 @@ export function createAdminRouter(channelActions, settingsActions) {
     }
   });
 
+  router.delete('/channels/:id', async (req, res) => {
+    try {
+      await channelActions.deleteChannel(req.params.id);
+      res.status(204).end();
+    } catch (err) {
+      if (err instanceof NotFoundError) {
+        res.status(404).json({ error: err.message });
+        return;
+      }
+      console.error('Failed to delete channel:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   if (settingsActions) {
     router.get('/settings', async (req, res) => {
       try {
