@@ -9,6 +9,7 @@ import { fetchStreams } from '../addonClient.js';
 import { streamViaFfmpeg } from './ffmpegProxy.js';
 import { createAdminRouter } from './adminRoutes.js';
 import { checkInstantAvailability, resolveStream, parseSeasonEpisode } from '../realDebrid.js';
+import { isLikelyPlayableSize } from '../streamSizeCheck.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', '..', 'public');
@@ -23,6 +24,7 @@ export function createApp({
   streamViaFfmpegImpl = streamViaFfmpeg,
   checkInstantAvailabilityImpl = checkInstantAvailability,
   resolveStreamImpl = resolveStream,
+  isLikelyPlayableSizeImpl = isLikelyPlayableSize,
   realDebridApiKey = null,
   nowImpl = () => new Date()
 }) {
@@ -98,8 +100,13 @@ export function createApp({
       let finalUrl = null;
       for (const candidate of candidates) {
         if (candidate.url) {
-          finalUrl = candidate.url;
-          break;
+          const playable = await isLikelyPlayableSizeImpl(candidate.url);
+          if (playable) {
+            finalUrl = candidate.url;
+            break;
+          }
+          console.error(`Direct URL failed size check (likely a takedown placeholder), trying next candidate: ${candidate.url}`);
+          continue;
         }
         const { season, episode } = parseSeasonEpisode(item.id);
         try {

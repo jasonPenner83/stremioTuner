@@ -7,7 +7,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { createApp } from '../src/server/app.js';
 import { writeSchedule, schedulePath } from '../src/scheduleStore.js';
 
-async function withApp(t, { channels, schedules = {}, corruptSchedules = {}, fetchStreamsImpl, streamViaFfmpegImpl, nowImpl, channelActions, settingsActions, realDebridApiKey, checkInstantAvailabilityImpl, resolveStreamImpl } = {}) {
+async function withApp(t, { channels, schedules = {}, corruptSchedules = {}, fetchStreamsImpl, streamViaFfmpegImpl, nowImpl, channelActions, settingsActions, realDebridApiKey, checkInstantAvailabilityImpl, resolveStreamImpl, isLikelyPlayableSizeImpl = async () => true } = {}) {
   const dataDir = await mkdtemp(path.join(tmpdir(), 'stremiotuner-'));
   for (const [channelId, schedule] of Object.entries(schedules)) {
     await writeSchedule(dataDir, channelId, schedule);
@@ -28,7 +28,8 @@ async function withApp(t, { channels, schedules = {}, corruptSchedules = {}, fet
     settingsActions,
     realDebridApiKey,
     checkInstantAvailabilityImpl,
-    resolveStreamImpl
+    resolveStreamImpl,
+    isLikelyPlayableSizeImpl
   });
   const server = app.listen(0);
   await new Promise((resolve) => server.once('listening', resolve));
@@ -279,6 +280,40 @@ test('GET /stream/:channelId 502s when every ranked candidate fails Real-Debrid 
   const res = await fetch(`${baseUrl}/stream/x`);
   assert.equal(res.status, 502);
   assert.equal(resolveAttempts, 2);
+});
+
+test('GET /stream/:channelId falls back to the next-ranked candidate when a direct-URL candidate fails the size check', async (t) => {
+  const now = new Date('2026-07-22T00:30:00.000Z');
+  const schedule = { generatedAt: '2026-07-22T00:00:00.000Z', items: [{ id: 'tt1', title: 'Current', start: '2026-07-22T00:00:00.000Z', end: '2026-07-22T02:00:00.000Z' }] };
+  const checkedUrls = [];
+  const baseUrl = await withApp(t, {
+    channels: [{ id: 'x', name: 'X', minQuality: '480p', language: 'en', source: { transportUrl: 'https://addon/manifest.json', type: 'movie' } }],
+    schedules: { x: schedule },
+    fetchStreamsImpl: async () => [
+      { title: '1080p 👤 50', url: 'http://placeholder' },
+      { title: '1080p 👤 10', url: 'http://good' }
+    ],
+    isLikelyPlayableSizeImpl: async (url) => { checkedUrls.push(url); return url !== 'http://placeholder'; },
+    streamViaFfmpegImpl: async (args) => { args.res.end(); },
+    nowImpl: () => now
+  });
+  const res = await fetch(`${baseUrl}/stream/x`);
+  assert.equal(res.status, 200);
+  assert.deepEqual(checkedUrls, ['http://placeholder', 'http://good']);
+});
+
+test('GET /stream/:channelId 502s when every direct-URL candidate fails the size check', async (t) => {
+  const now = new Date('2026-07-22T00:30:00.000Z');
+  const schedule = { generatedAt: '2026-07-22T00:00:00.000Z', items: [{ id: 'tt1', title: 'Current', start: '2026-07-22T00:00:00.000Z', end: '2026-07-22T02:00:00.000Z' }] };
+  const baseUrl = await withApp(t, {
+    channels: [{ id: 'x', name: 'X', minQuality: '480p', language: 'en', source: { transportUrl: 'https://addon/manifest.json', type: 'movie' } }],
+    schedules: { x: schedule },
+    fetchStreamsImpl: async () => [{ title: '1080p 👤 50', url: 'http://placeholder' }],
+    isLikelyPlayableSizeImpl: async () => false,
+    nowImpl: () => now
+  });
+  const res = await fetch(`${baseUrl}/stream/x`);
+  assert.equal(res.status, 502);
 });
 
 test('GET / serves the static admin UI', async (t) => {
