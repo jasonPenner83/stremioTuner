@@ -26,6 +26,18 @@ function escapeHtml(text) {
     .replace(/'/g, '&#39;');
 }
 
+let addonsCache = { degraded: false, addons: [] };
+
+function addonOptionsHtml(addons, current) {
+  const options = [{ id: '', name: 'None' }, ...addons];
+  if (current && !addons.some((a) => a.id === current)) {
+    options.push({ id: current, name: `${current} (not currently installed)` });
+  }
+  return options
+    .map((a) => `<option value="${escapeHtml(a.id)}"${a.id === current ? ' selected' : ''}>${escapeHtml(a.name)}</option>`)
+    .join('');
+}
+
 function showBanner(message) {
   const banner = document.getElementById('banner');
   banner.textContent = message;
@@ -59,6 +71,8 @@ async function loadSettings() {
     fetchJson('/admin/addons')
   ]);
 
+  addonsCache = addonsResult;
+
   const select = document.getElementById('default-stream-addon');
   const current = settings.defaultStreamAddon || '';
 
@@ -66,15 +80,7 @@ async function loadSettings() {
     showBanner('Could not reach your Stremio account right now — catalog list unavailable.');
   }
   select.disabled = addonsResult.degraded;
-
-  const options = [{ id: '', name: 'None' }, ...addonsResult.addons];
-  if (current && !addonsResult.addons.some((a) => a.id === current)) {
-    options.push({ id: current, name: `${current} (not currently installed)` });
-  }
-
-  select.innerHTML = options
-    .map((a) => `<option value="${escapeHtml(a.id)}"${a.id === current ? ' selected' : ''}>${escapeHtml(a.name)}</option>`)
-    .join('');
+  select.innerHTML = addonOptionsHtml(addonsResult.addons, current);
 }
 
 function wireSettingsForm() {
@@ -102,8 +108,9 @@ async function loadChannels() {
       <td>${selectHtml('mode', MODES, ch.mode)}</td>
       <td>${selectHtml('minQuality', QUALITIES, ch.minQuality)}</td>
       <td>${selectHtml('language', LANGUAGES, ch.language)}</td>
-      <td><input type="text" data-field="streamAddon" value="${escapeHtml(ch.streamAddon || '')}" placeholder="Overrides global default"></td>
+      <td><select data-field="streamAddon"${addonsCache.degraded ? ' disabled' : ''}>${addonOptionsHtml(addonsCache.addons, ch.streamAddon || '')}</select></td>
       <td><input type="checkbox" data-field="enabled" ${ch.enabled ? 'checked' : ''}></td>
+      <td><button data-action="delete-channel">Delete</button></td>
     </tr>
   `).join('');
 
@@ -126,6 +133,22 @@ async function loadChannels() {
       }
     });
   });
+
+  body.querySelectorAll('button[data-action="delete-channel"]').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      const row = e.target.closest('tr');
+      const id = row.dataset.id;
+      const name = row.children[0].textContent;
+      if (!confirm(`Delete channel "${name}"? This cannot be undone.`)) return;
+      try {
+        await fetchJson(`/admin/channels/${id}`, { method: 'DELETE' });
+        hideBanner();
+        await loadAll();
+      } catch (err) {
+        showBanner(err.message);
+      }
+    });
+  });
 }
 
 function catalogRowHtml(cat) {
@@ -133,6 +156,8 @@ function catalogRowHtml(cat) {
     return `<tr><td>${escapeHtml(cat.catalogName)}</td><td>${escapeHtml(cat.type)}</td><td>Already added</td></tr>`;
   }
   const key = cssEscape(`${cat.addon}::${cat.catalog}`);
+  const sourceAddon = addonsCache.addons.find((a) => a.id === cat.addon);
+  const defaultStreamAddon = sourceAddon && sourceAddon.supportsStreams ? cat.addon : '';
   return `
     <tr data-addon="${escapeHtml(cat.addon)}" data-catalog="${escapeHtml(cat.catalog)}" data-key="${key}">
       <td>${escapeHtml(cat.catalogName)}</td><td>${escapeHtml(cat.type)}</td>
@@ -145,7 +170,7 @@ function catalogRowHtml(cat) {
           ${selectHtml('mode', MODES, 'random-start')}
           ${selectHtml('minQuality', QUALITIES, '720p')}
           ${selectHtml('language', LANGUAGES, 'en')}
-          <input type="text" data-field="streamAddon" placeholder="Stream addon ID (optional — overrides the global default)">
+          <select data-field="streamAddon"${addonsCache.degraded ? ' disabled' : ''}>${addonOptionsHtml(addonsCache.addons, defaultStreamAddon)}</select>
           <button data-action="submit">Save</button>
         </div>
       </td>
@@ -193,7 +218,7 @@ async function loadCatalogs() {
       const mode = formDiv.querySelector('[data-field="mode"]').value;
       const minQuality = formDiv.querySelector('[data-field="minQuality"]').value;
       const language = formDiv.querySelector('[data-field="language"]').value;
-      const streamAddon = formDiv.querySelector('[data-field="streamAddon"]').value.trim() || undefined;
+      const streamAddon = formDiv.querySelector('[data-field="streamAddon"]').value || undefined;
       try {
         await fetchJson('/admin/channels', {
           method: 'POST',
