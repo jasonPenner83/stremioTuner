@@ -1,12 +1,6 @@
 import * as addonClient from './addonClient.js';
 import { buildRandomStartLineup, buildRandomLineup } from './lineup.js';
-
-function parseRuntimeMs(runtime) {
-  if (!runtime) return null;
-  const match = String(runtime).match(/(\d+)/);
-  if (!match) return null;
-  return Number(match[1]) * 60 * 1000;
-}
+import { parseRuntimeMs } from './runtimeParse.js';
 
 function makeEntry(item, startMs, runtimeMs) {
   return {
