@@ -4,12 +4,12 @@ import { fileURLToPath } from 'node:url';
 import { buildM3u } from '../m3u.js';
 import { buildXmltv } from '../xmltv.js';
 import { readSchedule } from '../scheduleStore.js';
-import { rankStreams } from '../streamSelect.js';
 import { fetchStreams } from '../addonClient.js';
 import { streamViaFfmpeg } from './ffmpegProxy.js';
 import { createAdminRouter } from './adminRoutes.js';
-import { checkInstantAvailability, resolveStream, parseSeasonEpisode } from '../realDebrid.js';
+import { checkInstantAvailability, resolveStream } from '../realDebrid.js';
 import { isLikelyPlayableSize } from '../streamSizeCheck.js';
+import { resolvePlayableUrl } from '../resolvePlayableUrl.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', '..', 'public');
@@ -25,6 +25,7 @@ export function createApp({
   checkInstantAvailabilityImpl = checkInstantAvailability,
   resolveStreamImpl = resolveStream,
   isLikelyPlayableSizeImpl = isLikelyPlayableSize,
+  resolvePlayableUrlImpl = resolvePlayableUrl,
   realDebridApiKey = null,
   nowImpl = () => new Date()
 }) {
@@ -78,44 +79,17 @@ export function createApp({
 
       const offsetSeconds = (now - new Date(item.start).getTime()) / 1000;
       const streamSource = channel.streamSource || channel.source;
-      const streams = await fetchStreamsImpl(streamSource.transportUrl, channel.source.type, item.id);
-
-      const direct = streams.filter((s) => !!s.url);
-      let magnetCandidates = streams.filter((s) => !!s.infoHash && !s.url);
-
-      if (magnetCandidates.length && realDebridApiKey) {
-        try {
-          const cached = await checkInstantAvailabilityImpl(realDebridApiKey, magnetCandidates.map((s) => s.infoHash));
-          magnetCandidates = magnetCandidates.filter((s) => cached.has(s.infoHash));
-        } catch (err) {
-          console.error(`Real-Debrid availability check failed: ${err.message}`);
-          magnetCandidates = [];
-        }
-      } else {
-        magnetCandidates = [];
-      }
-
-      const candidates = rankStreams([...direct, ...magnetCandidates], { minQuality: channel.minQuality, language: channel.language });
-
-      let finalUrl = null;
-      for (const candidate of candidates) {
-        if (candidate.url) {
-          const playable = await isLikelyPlayableSizeImpl(candidate.url);
-          if (playable) {
-            finalUrl = candidate.url;
-            break;
-          }
-          console.error(`Direct URL failed size check (likely a takedown placeholder), trying next candidate: ${candidate.url}`);
-          continue;
-        }
-        const { season, episode } = parseSeasonEpisode(item.id);
-        try {
-          finalUrl = await resolveStreamImpl(realDebridApiKey, candidate.infoHash, { season, episode });
-          break;
-        } catch (err) {
-          console.error(`Real-Debrid resolution failed for a candidate, trying next: ${err.message}`);
-        }
-      }
+      const finalUrl = await resolvePlayableUrlImpl({
+        item,
+        type: channel.source.type,
+        channel,
+        streamSource,
+        realDebridApiKey,
+        fetchStreamsImpl,
+        checkInstantAvailabilityImpl,
+        resolveStreamImpl,
+        isLikelyPlayableSizeImpl
+      });
 
       if (!finalUrl) {
         res.status(502).end('No playable stream found');
