@@ -46,11 +46,11 @@ export function matchesLanguage(text, languageCode) {
   return languageCode === 'en';
 }
 
-function maxByPeers(candidates) {
-  return candidates.reduce((best, c) => (c.peers > best.peers ? c : best));
+function sortByPeersDesc(candidates) {
+  return [...candidates].sort((a, b) => b.peers - a.peers);
 }
 
-export function selectStream(streams, { minQuality, language }) {
+export function rankStreams(streams, { minQuality, language }) {
   const minRank = qualityRank(minQuality);
   const parsed = streams
     .filter((s) => !!s.url || !!s.infoHash)
@@ -66,10 +66,13 @@ export function selectStream(streams, { minQuality, language }) {
     });
 
   const strict = parsed.filter((c) => c.languageOk && c.quality !== null && qualityRank(c.quality) >= minRank);
-  if (strict.length) return maxByPeers(strict);
+  const strictSet = new Set(strict);
+  const relaxedOnly = parsed.filter((c) => c.languageOk && !strictSet.has(c));
 
-  const relaxed = parsed.filter((c) => c.languageOk);
-  if (relaxed.length) return maxByPeers(relaxed);
+  return [...sortByPeersDesc(strict), ...sortByPeersDesc(relaxedOnly)];
+}
 
-  return null;
+export function selectStream(streams, opts) {
+  const ranked = rankStreams(streams, opts);
+  return ranked[0] ?? null;
 }

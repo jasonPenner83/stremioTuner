@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseQuality, qualityRank, parsePeers, matchesLanguage, selectStream } from '../src/streamSelect.js';
+import { parseQuality, qualityRank, parsePeers, matchesLanguage, selectStream, rankStreams } from '../src/streamSelect.js';
 
 test('parseQuality finds known quality tokens', () => {
   assert.equal(parseQuality('Movie.Title.2020.1080p.WEB-DL'), '1080p');
@@ -101,4 +101,39 @@ test('selectStream ignores candidates with neither url nor infoHash', () => {
   ];
   const result = selectStream(streams, { minQuality: '720p', language: 'en' });
   assert.equal(result.infoHash, 'abc123');
+});
+
+test('rankStreams orders strict-tier candidates by peers descending, ahead of relaxed-tier candidates', () => {
+  const streams = [
+    { title: '480p 👤 999', url: 'http://relaxed-high' },
+    { title: '1080p 👤 5', url: 'http://strict-low' },
+    { title: '1080p 👤 50', url: 'http://strict-high' }
+  ];
+  const result = rankStreams(streams, { minQuality: '1080p', language: 'en' });
+  assert.deepEqual(result.map((c) => c.url), ['http://strict-high', 'http://strict-low', 'http://relaxed-high']);
+});
+
+test('rankStreams does not list a candidate twice when it qualifies for both tiers', () => {
+  const streams = [
+    { title: '1080p 👤 10', url: 'http://a' }
+  ];
+  const result = rankStreams(streams, { minQuality: '720p', language: 'en' });
+  assert.equal(result.length, 1);
+});
+
+test('rankStreams falls back to sorted relaxed-tier candidates when no strict-tier candidate exists', () => {
+  const streams = [
+    { title: '480p 👤 5', url: 'http://a' },
+    { title: '480p 👤 20', url: 'http://b' }
+  ];
+  const result = rankStreams(streams, { minQuality: '1080p', language: 'en' });
+  assert.deepEqual(result.map((c) => c.url), ['http://b', 'http://a']);
+});
+
+test('rankStreams returns an empty array when nothing matches language at all', () => {
+  const streams = [
+    { title: '[French] 1080p 👤 50', url: 'http://a' }
+  ];
+  const result = rankStreams(streams, { minQuality: '480p', language: 'en' });
+  assert.deepEqual(result, []);
 });
