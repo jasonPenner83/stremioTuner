@@ -48,10 +48,29 @@ test('listCatalogs marks a catalog with no matching channel as channelId: null',
   assert.equal(result.catalogs[0].channelId, null);
 });
 
-test('listChannels returns the persisted channel list', async () => {
+test('listChannels returns the persisted channel list with lastError merged in from the live array', async () => {
   const actions = createChannelActions(baseDeps({ readChannelsImpl: async () => [{ id: 'x' }] }));
   const result = await actions.listChannels();
-  assert.deepEqual(result, [{ id: 'x' }]);
+  assert.deepEqual(result, [{ id: 'x', lastError: null }]);
+});
+
+test('listChannels merges a live channel\'s lastError into its persisted record', async () => {
+  const channels = [{ id: 'x', lastError: 'boom' }];
+  const actions = createChannelActions(baseDeps({
+    channels,
+    readChannelsImpl: async () => [{ id: 'x' }]
+  }));
+  const result = await actions.listChannels();
+  assert.equal(result[0].lastError, 'boom');
+});
+
+test('listChannels reports lastError: null for a channel not present in the live array (e.g. disabled)', async () => {
+  const actions = createChannelActions(baseDeps({
+    channels: [],
+    readChannelsImpl: async () => [{ id: 'x', enabled: false }]
+  }));
+  const result = await actions.listChannels();
+  assert.equal(result[0].lastError, null);
 });
 
 test('addChannel rejects an invalid mode before touching the network or disk', async () => {

@@ -33,7 +33,11 @@ export function createChannelActions({
   }
 
   async function listChannels() {
-    return readChannelsImpl(dataDir);
+    const persisted = await readChannelsImpl(dataDir);
+    return persisted.map((ch) => {
+      const live = channels.find((c) => c.id === ch.id);
+      return { ...ch, lastError: live?.lastError ?? null };
+    });
   }
 
   async function addChannel({ addon, catalog, name, mode, minQuality, language, streamAddon }) {
