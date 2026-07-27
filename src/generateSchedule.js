@@ -5,6 +5,11 @@ import { resolvePlayableUrl } from './resolvePlayableUrl.js';
 import { probeDurationMs } from './durationProbe.js';
 import { fetchCinemetaRuntimeMs } from './cinemetaClient.js';
 
+// Below this, a probed value is treated as a degenerate/unreliable ffprobe
+// result (e.g. a preview clip) rather than a genuine full-length duration, so
+// it falls through unresolved instead of being trusted and cached.
+const MIN_PROBED_DURATION_MS = 60 * 1000;
+
 function makeEntry(item, startMs, runtimeMs) {
   return {
     id: item.id,
@@ -64,7 +69,7 @@ export async function generateChannelSchedule({
       });
       if (url) {
         const probedMs = await probeDurationMsImpl(url);
-        if (probedMs && probedMs > 0) {
+        if (probedMs && probedMs >= MIN_PROBED_DURATION_MS) {
           durationCache[item.id] = { ms: probedMs, source: 'probe', resolvedAt: new Date().toISOString() };
           return probedMs;
         }

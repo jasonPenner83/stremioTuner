@@ -552,6 +552,49 @@ test('regenerate reads the duration cache, passes it and realDebridApiKey to gen
   assert.deepEqual(writeCalledWith, { dataDir: '/tmp/unused', cache: fakeCache });
 });
 
+test('regenerate merges its resolved entries on top of a re-read on-disk cache, preserving concurrently-written entries', async () => {
+  // Simulates a concurrent regenerate() call writing a new entry ('concurrent': ...)
+  // to disk in between this call's initial read and its final write.
+  let onDiskCache = { existing: { ms: 1111, source: 'meta', resolvedAt: 'x' } };
+  let readCallCount = 0;
+  let writeCalledWith = null;
+
+  const result = await bootstrap({
+    env: { DATA_DIR: '/tmp/unused', REALDEBRID_API_KEY: 'rd-key' },
+    readChannelsImpl: async () => [channel({ id: 'x', addon: 'a', catalog: 'c', enabled: true })],
+    writeChannelsImpl: async () => {},
+    readSettingsImpl: async () => ({}),
+    writeSettingsImpl: async () => {},
+    getAuthKeyImpl: async () => 'auth',
+    getInstalledAddonsImpl: async () => [{ id: 'a', transportUrl: 'https://a/manifest.json', manifest: { id: 'a', catalogs: [{ id: 'c', type: 'movie' }] } }],
+    findAddonByIdImpl: (addons, id) => addons.find((a) => a.id === id),
+    resolveChannelSourceImpl: () => ({ type: 'movie', catalogId: 'c' }),
+    generateChannelScheduleImpl: async (args) => {
+      // Mutates the locally-read cache with a newly-resolved entry, then
+      // simulates a concurrent regenerate() call completing (writing its own
+      // entry to disk) before this call performs its final write.
+      args.durationCache.newlyResolved = { ms: 2222, source: 'probe', resolvedAt: 'y' };
+      onDiskCache = { ...onDiskCache, concurrent: { ms: 3333, source: 'meta', resolvedAt: 'z' } };
+      return { generatedAt: 'new', items: [] };
+    },
+    readScheduleImpl: async () => null,
+    writeScheduleImpl: async () => {},
+    isScheduleFreshImpl: () => false,
+    scheduleDailyAtImpl: () => {},
+    createAppImpl: () => ({ listen: () => ({ address: () => ({ port: 0 }) }) }),
+    readDurationCacheImpl: async () => { readCallCount += 1; return { ...onDiskCache }; },
+    writeDurationCacheImpl: async (dataDir, cache) => { writeCalledWith = { dataDir, cache }; }
+  });
+  await result.startupRegenerationDone;
+
+  assert.ok(readCallCount >= 2, 'expected the duration cache to be re-read before the final write');
+  assert.deepEqual(writeCalledWith.cache, {
+    existing: { ms: 1111, source: 'meta', resolvedAt: 'x' },
+    concurrent: { ms: 3333, source: 'meta', resolvedAt: 'z' },
+    newlyResolved: { ms: 2222, source: 'probe', resolvedAt: 'y' }
+  });
+});
+
 test('regenerate sets channel.lastError on a schedule generation failure', async () => {
   const result = await bootstrap({
     env: { STREMIO_EMAIL: 'a@b.com', STREMIO_PASSWORD: 'pw' },

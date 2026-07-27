@@ -117,7 +117,13 @@ export async function bootstrap({
     try {
       const durationCache = await readDurationCacheImpl(dataDir);
       const schedule = await generateChannelScheduleImpl({ channel, source: channel.source, realDebridApiKey, durationCache });
-      await writeDurationCacheImpl(dataDir, durationCache);
+      // Re-read the on-disk cache immediately before writing to merge in any
+      // entries a concurrent regenerate() call (background startup pass,
+      // admin-triggered regeneration, daily cron) may have written while this
+      // call was resolving durations. Locally-resolved entries win on key
+      // collision; entries unique to the freshly re-read state are preserved.
+      const currentOnDisk = await readDurationCacheImpl(dataDir);
+      await writeDurationCacheImpl(dataDir, { ...currentOnDisk, ...durationCache });
       await writeScheduleImpl(dataDir, channel.id, schedule);
       channel.lastError = null;
     } catch (err) {

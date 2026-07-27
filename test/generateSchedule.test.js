@@ -211,6 +211,26 @@ test('caches a successfully-probed duration to the durationCache object', async 
   assert.equal(durationCache.tt1.source, 'probe');
 });
 
+test('a probed duration below the minimum floor is treated as unresolved and not cached', async () => {
+  const addonClientImpl = makeAddonClientImpl({});
+  const durationCache = {};
+  const schedule = await generateChannelSchedule({
+    channel: { mode: 'random-start', catalog: 'x', minQuality: '480p', language: 'en' },
+    source: { transportUrl: 'https://addon/manifest.json', type: 'movie' },
+    addonClientImpl,
+    now: () => new Date('2026-07-22T00:00:00.000Z'),
+    targetWindowMs: 90 * 60 * 1000,
+    defaultRuntimeMs: 90 * 60 * 1000,
+    rng: () => 0,
+    durationCache,
+    fetchCinemetaRuntimeImpl: async () => null,
+    resolvePlayableUrlImpl: async () => 'https://direct/file.mkv',
+    probeDurationMsImpl: async () => 5000
+  });
+  assert.equal(schedule.items[0].end, '2026-07-22T01:30:00.000Z');
+  assert.deepEqual(durationCache, {});
+});
+
 test('a thrown error from probe resolution is caught and falls through to the default', async () => {
   const addonClientImpl = makeAddonClientImpl({});
   const schedule = await generateChannelSchedule({
