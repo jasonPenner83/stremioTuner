@@ -54,8 +54,27 @@ function wireCopyButtons() {
 }
 
 async function loadSettings() {
-  const settings = await fetchJson('/admin/settings');
-  document.getElementById('default-stream-addon').value = settings.defaultStreamAddon || '';
+  const [settings, addonsResult] = await Promise.all([
+    fetchJson('/admin/settings'),
+    fetchJson('/admin/addons')
+  ]);
+
+  const select = document.getElementById('default-stream-addon');
+  const current = settings.defaultStreamAddon || '';
+
+  if (addonsResult.degraded) {
+    showBanner('Could not reach your Stremio account right now — catalog list unavailable.');
+  }
+  select.disabled = addonsResult.degraded;
+
+  const options = [{ id: '', name: 'None' }, ...addonsResult.addons];
+  if (current && !addonsResult.addons.some((a) => a.id === current)) {
+    options.push({ id: current, name: `${current} (not currently installed)` });
+  }
+
+  select.innerHTML = options
+    .map((a) => `<option value="${escapeHtml(a.id)}"${a.id === current ? ' selected' : ''}>${escapeHtml(a.name)}</option>`)
+    .join('');
 }
 
 function wireSettingsForm() {
