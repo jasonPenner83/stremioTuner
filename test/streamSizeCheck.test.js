@@ -35,3 +35,20 @@ test('isLikelyPlayableSize fails open (true) when the HEAD request throws', asyn
   const result = await isLikelyPlayableSize('https://example.com/video.mkv', { fetchImpl });
   assert.equal(result, true);
 });
+
+test('isLikelyPlayableSize fails open (true) when the HEAD request times out', async () => {
+  let capturedSignal;
+  const fetchImpl = (url, opts) => {
+    capturedSignal = opts.signal;
+    return new Promise((resolve, reject) => {
+      opts.signal.addEventListener('abort', () => reject(new Error('aborted')));
+    });
+  };
+  const start = Date.now();
+  const result = await isLikelyPlayableSize('https://example.com/video.mkv', { fetchImpl, timeoutMs: 10 });
+  const elapsed = Date.now() - start;
+  assert.ok(capturedSignal instanceof AbortSignal, 'expected an AbortSignal to be passed to fetchImpl');
+  assert.equal(capturedSignal.aborted, true, 'expected the signal to have fired within the timeout');
+  assert.equal(result, true);
+  assert.ok(elapsed < 1000, `expected fast timeout, took ${elapsed}ms`);
+});
