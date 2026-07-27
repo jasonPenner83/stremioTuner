@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { buildM3u } from '../m3u.js';
 import { buildXmltv } from '../xmltv.js';
 import { readSchedule } from '../scheduleStore.js';
-import { selectStream } from '../streamSelect.js';
+import { rankStreams } from '../streamSelect.js';
 import { fetchStreams } from '../addonClient.js';
 import { streamViaFfmpeg } from './ffmpegProxy.js';
 import { createAdminRouter } from './adminRoutes.js';
@@ -93,22 +93,26 @@ export function createApp({
         magnetCandidates = [];
       }
 
-      const selected = selectStream([...direct, ...magnetCandidates], { minQuality: channel.minQuality, language: channel.language });
-      if (!selected) {
-        res.status(502).end('No playable stream found');
-        return;
-      }
+      const candidates = rankStreams([...direct, ...magnetCandidates], { minQuality: channel.minQuality, language: channel.language });
 
-      let finalUrl = selected.url;
-      if (!finalUrl && selected.infoHash) {
+      let finalUrl = null;
+      for (const candidate of candidates) {
+        if (candidate.url) {
+          finalUrl = candidate.url;
+          break;
+        }
         const { season, episode } = parseSeasonEpisode(item.id);
         try {
-          finalUrl = await resolveStreamImpl(realDebridApiKey, selected.infoHash, { season, episode });
+          finalUrl = await resolveStreamImpl(realDebridApiKey, candidate.infoHash, { season, episode });
+          break;
         } catch (err) {
-          console.error(`Real-Debrid resolution failed: ${err.message}`);
-          res.status(502).end('No playable stream found');
-          return;
+          console.error(`Real-Debrid resolution failed for a candidate, trying next: ${err.message}`);
         }
+      }
+
+      if (!finalUrl) {
+        res.status(502).end('No playable stream found');
+        return;
       }
 
       await streamViaFfmpegImpl({ sourceUrl: finalUrl, offsetSeconds, res });

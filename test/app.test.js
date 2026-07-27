@@ -234,6 +234,53 @@ test('GET /stream/:channelId 502s (not 500) when Real-Debrid instant availabilit
   assert.equal(res.status, 502);
 });
 
+test('GET /stream/:channelId falls back to the next-ranked candidate when the top one fails Real-Debrid resolution', async (t) => {
+  const now = new Date('2026-07-22T00:30:00.000Z');
+  const schedule = { generatedAt: '2026-07-22T00:00:00.000Z', items: [{ id: 'tt1', title: 'Current', start: '2026-07-22T00:00:00.000Z', end: '2026-07-22T02:00:00.000Z' }] };
+  const resolvedInfoHashes = [];
+  const baseUrl = await withApp(t, {
+    channels: [{ id: 'x', name: 'X', minQuality: '480p', language: 'en', source: { transportUrl: 'https://addon/manifest.json', type: 'movie' }, streamSource: { transportUrl: 'https://torrentio/manifest.json' } }],
+    schedules: { x: schedule },
+    fetchStreamsImpl: async () => [
+      { title: '1080p 👤 50', infoHash: 'best-but-bad' },
+      { title: '1080p 👤 10', infoHash: 'second-good' }
+    ],
+    checkInstantAvailabilityImpl: async () => new Set(['best-but-bad', 'second-good']),
+    resolveStreamImpl: async (apiKey, infoHash) => {
+      resolvedInfoHashes.push(infoHash);
+      if (infoHash === 'best-but-bad') throw new Error('Resolved file too small (likely a takedown placeholder): 2097152 bytes');
+      return 'https://direct/good.mkv';
+    },
+    streamViaFfmpegImpl: async (args) => { args.res.end(); },
+    nowImpl: () => now,
+    realDebridApiKey: 'rd-key'
+  });
+  const res = await fetch(`${baseUrl}/stream/x`);
+  assert.equal(res.status, 200);
+  assert.deepEqual(resolvedInfoHashes, ['best-but-bad', 'second-good']);
+});
+
+test('GET /stream/:channelId 502s when every ranked candidate fails Real-Debrid resolution', async (t) => {
+  const now = new Date('2026-07-22T00:30:00.000Z');
+  const schedule = { generatedAt: '2026-07-22T00:00:00.000Z', items: [{ id: 'tt1', title: 'Current', start: '2026-07-22T00:00:00.000Z', end: '2026-07-22T02:00:00.000Z' }] };
+  let resolveAttempts = 0;
+  const baseUrl = await withApp(t, {
+    channels: [{ id: 'x', name: 'X', minQuality: '480p', language: 'en', source: { transportUrl: 'https://addon/manifest.json', type: 'movie' }, streamSource: { transportUrl: 'https://torrentio/manifest.json' } }],
+    schedules: { x: schedule },
+    fetchStreamsImpl: async () => [
+      { title: '1080p 👤 50', infoHash: 'bad-one' },
+      { title: '1080p 👤 10', infoHash: 'also-bad' }
+    ],
+    checkInstantAvailabilityImpl: async () => new Set(['bad-one', 'also-bad']),
+    resolveStreamImpl: async () => { resolveAttempts += 1; throw new Error('always fails'); },
+    nowImpl: () => now,
+    realDebridApiKey: 'rd-key'
+  });
+  const res = await fetch(`${baseUrl}/stream/x`);
+  assert.equal(res.status, 502);
+  assert.equal(resolveAttempts, 2);
+});
+
 test('GET / serves the static admin UI', async (t) => {
   const baseUrl = await withApp(t, { channels: [] });
   const res = await fetch(`${baseUrl}/`);
