@@ -110,6 +110,7 @@ async function loadChannels() {
       <td>${selectHtml('language', LANGUAGES, ch.language)}</td>
       <td><select data-field="streamAddon"${addonsCache.degraded ? ' disabled' : ''}>${addonOptionsHtml(addonsCache.addons, ch.streamAddon || '')}</select></td>
       <td><input type="checkbox" data-field="enabled" ${ch.enabled ? 'checked' : ''}></td>
+      <td>${ch.lastError ? `<span class="status-error" title="${escapeHtml(ch.lastError)}">${escapeHtml(ch.lastError)}</span>` : 'OK'}</td>
       <td><button data-action="delete-channel">Delete</button></td>
     </tr>
   `).join('');

@@ -11,6 +11,7 @@
     th, td { text-align: left; padding: 0.4rem; border-bottom: 1px solid #ddd; }
     button { cursor: pointer; }
     .banner { background: #fee; border: 1px solid #c00; padding: 0.5rem 1rem; margin-bottom: 1rem; display: none; }
+    .status-error { color: #c00; }
     .add-form { display: none; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
     .add-form.open { display: flex; }
     select, input[type=text] { padding: 0.2rem; }
@@ -53,7 +54,7 @@
     <h2>My channels</h2>
     <table>
       <thead>
-        <tr><th>Name</th><th>Mode</th><th>Min quality</th><th>Language</th><th>Stream addon</th><th>Enabled</th><th>Delete</th></tr>
+        <tr><th>Name</th><th>Mode</th><th>Min quality</th><th>Language</th><th>Stream addon</th><th>Enabled</th><th>Status</th><th>Delete</th></tr>
       </thead>
       <tbody id="channels-body"></tbody>
     </table>
