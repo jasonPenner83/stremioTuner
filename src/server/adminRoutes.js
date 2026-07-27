@@ -81,6 +81,16 @@ export function createAdminRouter(channelActions, settingsActions) {
         res.status(500).json({ error: 'Internal server error' });
       }
     });
+
+    router.get('/addons', async (req, res) => {
+      try {
+        const result = await settingsActions.listAddons();
+        res.json(result);
+      } catch (err) {
+        console.error('Failed to list addons:', err);
+        res.status(500).json({ error: 'Internal server error' });
+      }
+    });
   }
 
   // Error-handling middleware for body-parsing errors

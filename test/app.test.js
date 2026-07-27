@@ -269,3 +269,15 @@ test('GET /admin/settings is reachable through createApp when settingsActions is
   assert.equal(res.status, 200);
   assert.deepEqual(body, { defaultStreamAddon: 'org.torrentio' });
 });
+
+test('GET /admin/addons is reachable through createApp when settingsActions is provided', async (t) => {
+  const baseUrl = await withApp(t, {
+    channels: [],
+    channelActions: { listChannels: async () => [] },
+    settingsActions: { listAddons: async () => ({ degraded: false, addons: [{ id: 'org.torrentio', name: 'Torrentio' }] }) }
+  });
+  const res = await fetch(`${baseUrl}/admin/addons`);
+  const body = await res.json();
+  assert.equal(res.status, 200);
+  assert.deepEqual(body, { degraded: false, addons: [{ id: 'org.torrentio', name: 'Torrentio' }] });
+});

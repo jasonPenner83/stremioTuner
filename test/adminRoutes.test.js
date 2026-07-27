@@ -156,3 +156,19 @@ test('routes under /admin/settings are not registered when settingsActions is om
   const res = await fetch(`${baseUrl}/settings`);
   assert.equal(res.status, 404);
 });
+
+test('GET /admin/addons proxies to settingsActions.listAddons', async (t) => {
+  const baseUrl = await withRouter(t, {}, {
+    listAddons: async () => ({ degraded: false, addons: [{ id: 'org.torrentio', name: 'Torrentio' }] })
+  });
+  const res = await fetch(`${baseUrl}/addons`);
+  const body = await res.json();
+  assert.equal(res.status, 200);
+  assert.deepEqual(body, { degraded: false, addons: [{ id: 'org.torrentio', name: 'Torrentio' }] });
+});
+
+test('GET /admin/addons is not registered when settingsActions is omitted', async (t) => {
+  const baseUrl = await withRouter(t, { listChannels: async () => [] });
+  const res = await fetch(`${baseUrl}/addons`);
+  assert.equal(res.status, 404);
+});
