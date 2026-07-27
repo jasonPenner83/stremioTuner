@@ -288,3 +288,49 @@ test('updateChannel clearing streamAddon on an already-enabled channel falls bac
   assert.equal(channels[0].streamSource.transportUrl, 'https://default-addon/manifest.json');
   assert.equal(regeneratedId, 'x');
 });
+
+test('deleteChannel removes the channel from the persisted list', async () => {
+  const persisted = [{ id: 'x', addon: 'org.a', catalog: 'cat-a', name: 'X', mode: 'random', minQuality: '720p', language: 'en', enabled: true }];
+  let written = null;
+  const actions = createChannelActions(baseDeps({
+    readChannelsImpl: async () => persisted,
+    writeChannelsImpl: async (dataDir, list) => { written = list; }
+  }));
+
+  await actions.deleteChannel('x');
+
+  assert.deepEqual(written, []);
+});
+
+test('deleteChannel removes the channel from the live array when it is currently live', async () => {
+  const persisted = [{ id: 'x', addon: 'org.a', catalog: 'cat-a', name: 'X', mode: 'random', minQuality: '720p', language: 'en', enabled: true }];
+  const channels = [{ ...persisted[0], source: { transportUrl: 'https://a/manifest.json', type: 'movie' } }];
+  const actions = createChannelActions(baseDeps({
+    channels,
+    readChannelsImpl: async () => persisted,
+    writeChannelsImpl: async () => {}
+  }));
+
+  await actions.deleteChannel('x');
+
+  assert.equal(channels.length, 0);
+});
+
+test('deleteChannel is a no-op on the live array when the channel is not currently live', async () => {
+  const persisted = [{ id: 'x', addon: 'org.a', catalog: 'cat-a', name: 'X', mode: 'random', minQuality: '720p', language: 'en', enabled: false }];
+  const channels = [];
+  const actions = createChannelActions(baseDeps({
+    channels,
+    readChannelsImpl: async () => persisted,
+    writeChannelsImpl: async () => {}
+  }));
+
+  await actions.deleteChannel('x');
+
+  assert.equal(channels.length, 0);
+});
+
+test('deleteChannel throws NotFoundError for an unknown id', async () => {
+  const actions = createChannelActions(baseDeps({ readChannelsImpl: async () => [] }));
+  await assert.rejects(() => actions.deleteChannel('unknown'), NotFoundError);
+});

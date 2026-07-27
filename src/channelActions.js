@@ -119,5 +119,19 @@ export function createChannelActions({
     return updated;
   }
 
-  return { listCatalogs, listChannels, addChannel, updateChannel };
+  async function deleteChannel(id) {
+    const persisted = await readChannelsImpl(dataDir);
+    const index = persisted.findIndex((ch) => ch.id === id);
+    if (index === -1) {
+      throw new NotFoundError(`No channel with id "${id}"`);
+    }
+
+    const nextPersisted = persisted.filter((ch) => ch.id !== id);
+    await writeChannelsImpl(dataDir, nextPersisted);
+
+    const liveIndex = channels.findIndex((ch) => ch.id === id);
+    if (liveIndex !== -1) channels.splice(liveIndex, 1);
+  }
+
+  return { listCatalogs, listChannels, addChannel, updateChannel, deleteChannel };
 }
