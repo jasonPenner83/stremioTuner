@@ -57,7 +57,9 @@ test('falls back to the default runtime when meta has no runtime', async () => {
     now: () => new Date('2026-07-22T00:00:00.000Z'),
     targetWindowMs: 90 * 60 * 1000,
     defaultRuntimeMs: 90 * 60 * 1000,
-    rng: () => 0
+    rng: () => 0,
+    fetchCinemetaRuntimeImpl: async () => null,
+    resolvePlayableUrlImpl: async () => null
   });
   assert.equal(schedule.items.length, 1);
   assert.equal(schedule.items[0].end, '2026-07-22T01:30:00.000Z');
@@ -98,7 +100,9 @@ test('treats zero-runtime metadata as invalid and falls back to defaultRuntimeMs
     now: () => new Date('2026-07-22T00:00:00.000Z'),
     targetWindowMs: 60 * 60 * 1000, // 60 minutes target
     defaultRuntimeMs: 60 * 60 * 1000, // 60 minutes default (fallback for zero metadata)
-    rng: () => 0 // starts at tt1
+    rng: () => 0, // starts at tt1
+    fetchCinemetaRuntimeImpl: async () => null,
+    resolvePlayableUrlImpl: async () => null
   });
   // Loop condition: while (cursorTime - startTime < targetWindowMs)
   // Item 1: cursorTime=0, check 0 < 60*60*1000? YES, add item, cursorTime=60*60*1000
