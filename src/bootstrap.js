@@ -107,13 +107,16 @@ export async function bootstrap({
 
   async function regenerate(channel) {
     if (!channel.source) {
+      channel.lastError = 'No resolved addon source';
       console.error(`Skipping schedule regeneration for "${channel.name}": no resolved addon source`);
       return;
     }
     try {
       const schedule = await generateChannelScheduleImpl({ channel, source: channel.source });
       await writeScheduleImpl(dataDir, channel.id, schedule);
+      channel.lastError = null;
     } catch (err) {
+      channel.lastError = err.message;
       console.error(`Schedule generation failed for "${channel.name}": ${err.message}`);
     }
   }

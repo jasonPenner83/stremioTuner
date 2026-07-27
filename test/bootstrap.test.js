@@ -488,3 +488,80 @@ test('bootstrap wires a real settingsActions instance backed by the shared setti
   const settings = await result.settingsActions.getSettings();
   assert.deepEqual(settings, {});
 });
+
+test('regenerate sets channel.lastError on a schedule generation failure', async () => {
+  const result = await bootstrap({
+    env: { STREMIO_EMAIL: 'a@b.com', STREMIO_PASSWORD: 'pw' },
+    readChannelsImpl: async () => ([channel({ id: 'x', name: 'X', addon: 'org.a', catalog: 'cat-a' })]),
+    writeChannelsImpl: async () => {},
+    getAuthKeyImpl: async () => 'auth-key',
+    getInstalledAddonsImpl: async () => [
+      { transportUrl: 'https://a/manifest.json', manifest: { id: 'org.a', catalogs: [{ id: 'cat-a', type: 'movie' }] } }
+    ],
+    findAddonByIdImpl: (addons, id) => addons.find((a) => a.manifest.id === id),
+    resolveChannelSourceImpl: (manifest, catalogId) => manifest.catalogs.find((c) => c.id === catalogId),
+    readScheduleImpl: async () => null,
+    isScheduleFreshImpl: () => false,
+    generateChannelScheduleImpl: async () => { throw new Error('Unexpected token \'<\', "<!DOCTYPE "... is not valid JSON'); },
+    writeScheduleImpl: async () => {},
+    scheduleDailyAtImpl: () => ({ cancel() {} }),
+    createAppImpl: () => fakeApp()
+  });
+  await result.startupRegenerationDone;
+
+  assert.equal(result.channels[0].lastError, 'Unexpected token \'<\', "<!DOCTYPE "... is not valid JSON');
+});
+
+test('regenerate sets channel.lastError to "No resolved addon source" when the source failed to resolve', async () => {
+  const result = await bootstrap({
+    env: { STREMIO_EMAIL: 'a@b.com', STREMIO_PASSWORD: 'pw' },
+    readChannelsImpl: async () => ([channel({ id: 'x', name: 'X', addon: 'org.missing', catalog: 'cat-a' })]),
+    writeChannelsImpl: async () => {},
+    getAuthKeyImpl: async () => 'auth-key',
+    getInstalledAddonsImpl: async () => [],
+    findAddonByIdImpl: () => { throw new Error('not found'); },
+    resolveChannelSourceImpl: () => null,
+    readScheduleImpl: async () => null,
+    isScheduleFreshImpl: () => false,
+    writeScheduleImpl: async () => {},
+    scheduleDailyAtImpl: () => ({ cancel() {} }),
+    createAppImpl: () => fakeApp()
+  });
+  await result.startupRegenerationDone;
+
+  assert.equal(result.channels[0].lastError, 'No resolved addon source');
+});
+
+test('regenerate clears a previously-set lastError after a subsequent successful regeneration', async () => {
+  let generationAttempts = 0;
+  let cronCallback;
+
+  const result = await bootstrap({
+    env: { STREMIO_EMAIL: 'a@b.com', STREMIO_PASSWORD: 'pw' },
+    readChannelsImpl: async () => ([channel({ id: 'x', name: 'X', addon: 'org.a', catalog: 'cat-a' })]),
+    writeChannelsImpl: async () => {},
+    getAuthKeyImpl: async () => 'auth-key',
+    getInstalledAddonsImpl: async () => [
+      { transportUrl: 'https://a/manifest.json', manifest: { id: 'org.a', catalogs: [{ id: 'cat-a', type: 'movie' }] } }
+    ],
+    findAddonByIdImpl: (addons, id) => addons.find((a) => a.manifest.id === id),
+    resolveChannelSourceImpl: (manifest, catalogId) => manifest.catalogs.find((c) => c.id === catalogId),
+    readScheduleImpl: async () => null,
+    isScheduleFreshImpl: () => false,
+    generateChannelScheduleImpl: async ({ channel: ch }) => {
+      generationAttempts += 1;
+      if (generationAttempts === 1) throw new Error('temporary failure');
+      return { generatedAt: 'new', items: [], channelId: ch.id };
+    },
+    writeScheduleImpl: async () => {},
+    scheduleDailyAtImpl: (refreshTime, cb) => { cronCallback = cb; return { cancel() {} }; },
+    createAppImpl: () => fakeApp()
+  });
+  await result.startupRegenerationDone;
+
+  assert.equal(result.channels[0].lastError, 'temporary failure');
+
+  await cronCallback();
+
+  assert.equal(result.channels[0].lastError, null);
+});
