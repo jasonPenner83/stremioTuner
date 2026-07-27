@@ -120,8 +120,38 @@ test('listAddons flattens every installed addon into id/name pairs, regardless o
   assert.deepEqual(result, {
     degraded: false,
     addons: [
-      { id: 'org.torrentio', name: 'Torrentio' },
-      { id: 'org.cinemeta', name: 'Cinemeta' }
+      { id: 'org.torrentio', name: 'Torrentio', supportsStreams: false },
+      { id: 'org.cinemeta', name: 'Cinemeta', supportsStreams: false }
     ]
   });
+});
+
+test('listAddons reports supportsStreams: true when manifest.resources is an array of strings including "stream"', async () => {
+  const actions = createSettingsActions(baseDeps({
+    discoverInstalledAddons: async () => [
+      { manifest: { id: 'org.torrentio', name: 'Torrentio', resources: ['catalog', 'stream'] }, transportUrl: 'https://torrentio/manifest.json' }
+    ]
+  }));
+  const result = await actions.listAddons();
+  assert.equal(result.addons[0].supportsStreams, true);
+});
+
+test('listAddons reports supportsStreams: true when manifest.resources is an array of descriptor objects', async () => {
+  const actions = createSettingsActions(baseDeps({
+    discoverInstalledAddons: async () => [
+      { manifest: { id: 'org.torrentio', name: 'Torrentio', resources: [{ name: 'stream', types: ['movie'], idPrefixes: ['tt'] }] }, transportUrl: 'https://torrentio/manifest.json' }
+    ]
+  }));
+  const result = await actions.listAddons();
+  assert.equal(result.addons[0].supportsStreams, true);
+});
+
+test('listAddons reports supportsStreams: false when manifest.resources is absent entirely (no crash)', async () => {
+  const actions = createSettingsActions(baseDeps({
+    discoverInstalledAddons: async () => [
+      { manifest: { id: 'org.cinemeta', name: 'Cinemeta' }, transportUrl: 'https://cinemeta/manifest.json' }
+    ]
+  }));
+  const result = await actions.listAddons();
+  assert.equal(result.addons[0].supportsStreams, false);
 });

@@ -1,6 +1,10 @@
 import { readSettings, writeSettings } from './settingsStore.js';
 import { ValidationError } from './channelActions.js';
 
+function manifestSupportsStreamResource(manifest) {
+  return (manifest.resources || []).some((r) => (typeof r === 'string' ? r : r.name) === 'stream');
+}
+
 export function createSettingsActions({
   dataDir,
   settings,
@@ -46,7 +50,11 @@ export function createSettingsActions({
     if (!installedAddons) return { degraded: true, addons: [] };
     return {
       degraded: false,
-      addons: installedAddons.map((entry) => ({ id: entry.manifest.id, name: entry.manifest.name }))
+      addons: installedAddons.map((entry) => ({
+        id: entry.manifest.id,
+        name: entry.manifest.name,
+        supportsStreams: manifestSupportsStreamResource(entry.manifest)
+      }))
     };
   }
 
