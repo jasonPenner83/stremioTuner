@@ -3,6 +3,7 @@ import { getAuthKey, getInstalledAddons, findAddonById, invalidateAuthKey } from
 import { resolveChannelSource } from './addonClient.js';
 import { generateChannelSchedule } from './generateSchedule.js';
 import { readSchedule, writeSchedule, isScheduleFresh } from './scheduleStore.js';
+import { readDurationCache, writeDurationCache } from './durationCacheStore.js';
 import { scheduleDailyAt } from './scheduling.js';
 import { createApp } from './server/app.js';
 import { createChannelActions } from './channelActions.js';
@@ -36,6 +37,8 @@ export async function bootstrap({
   generateChannelScheduleImpl = generateChannelSchedule,
   readScheduleImpl = readSchedule,
   writeScheduleImpl = writeSchedule,
+  readDurationCacheImpl = readDurationCache,
+  writeDurationCacheImpl = writeDurationCache,
   isScheduleFreshImpl = isScheduleFresh,
   scheduleDailyAtImpl = scheduleDailyAt,
   createAppImpl = createApp,
@@ -112,7 +115,9 @@ export async function bootstrap({
       return;
     }
     try {
-      const schedule = await generateChannelScheduleImpl({ channel, source: channel.source });
+      const durationCache = await readDurationCacheImpl(dataDir);
+      const schedule = await generateChannelScheduleImpl({ channel, source: channel.source, realDebridApiKey, durationCache });
+      await writeDurationCacheImpl(dataDir, durationCache);
       await writeScheduleImpl(dataDir, channel.id, schedule);
       channel.lastError = null;
     } catch (err) {

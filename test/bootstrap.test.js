@@ -32,6 +32,8 @@ test('bootstrap resolves each channel\'s source and only regenerates stale sched
     isScheduleFreshImpl: (schedule) => schedule !== null,
     generateChannelScheduleImpl: async ({ channel }) => ({ generatedAt: 'new', items: [], channelId: channel.id }),
     writeScheduleImpl: async (dataDir, channelId, schedule) => { writtenSchedules.push(channelId); },
+    readDurationCacheImpl: async () => ({}),
+    writeDurationCacheImpl: async () => {},
     scheduleDailyAtImpl: () => ({ cancel() {} }),
     createAppImpl: (args) => { createdAppArgs.push(args); return fakeApp(); }
   });
@@ -64,6 +66,8 @@ test('bootstrap only loads enabled channels into the live array', async () => {
     isScheduleFreshImpl: () => false,
     generateChannelScheduleImpl: async ({ channel: ch }) => ({ generatedAt: 'new', items: [], channelId: ch.id }),
     writeScheduleImpl: async () => {},
+    readDurationCacheImpl: async () => ({}),
+    writeDurationCacheImpl: async () => {},
     scheduleDailyAtImpl: () => ({ cancel() {} }),
     createAppImpl: (args) => { createdAppArgs.push(args); return fakeApp(); }
   });
@@ -95,6 +99,8 @@ test('bootstrap retries a failing getAuthKey with backoff before giving up', asy
     isScheduleFreshImpl: () => false,
     generateChannelScheduleImpl: async () => ({ generatedAt: 'new', items: [] }),
     writeScheduleImpl: async () => {},
+    readDurationCacheImpl: async () => ({}),
+    writeDurationCacheImpl: async () => {},
     scheduleDailyAtImpl: () => ({ cancel() {} }),
     createAppImpl: (args) => { createdAppArgs.push(args); return fakeApp(); }
   });
@@ -118,6 +124,8 @@ test('bootstrap still starts the server with source: null when login fails perma
     readScheduleImpl: async () => ({ generatedAt: '2026-07-22T00:00:00.000Z', items: [] }),
     isScheduleFreshImpl: () => true,
     writeScheduleImpl: async (dataDir, channelId) => { writtenSchedules.push(channelId); },
+    readDurationCacheImpl: async () => ({}),
+    writeDurationCacheImpl: async () => {},
     scheduleDailyAtImpl: () => ({ cancel() {} }),
     createAppImpl: (args) => { createdAppArgs.push(args); return fakeApp(); }
   });
@@ -153,6 +161,8 @@ test('bootstrap catches a schedule generation failure for one channel without af
       return { generatedAt: 'new', items: [], channelId: ch.id };
     },
     writeScheduleImpl: async (dataDir, channelId) => { writtenSchedules.push(channelId); },
+    readDurationCacheImpl: async () => ({}),
+    writeDurationCacheImpl: async () => {},
     scheduleDailyAtImpl: () => ({ cancel() {} }),
     createAppImpl: (args) => { createdAppArgs.push(args); return fakeApp(); }
   });
@@ -189,6 +199,8 @@ test('bootstrap resolves source: null for a channel whose addon lookup fails whi
     isScheduleFreshImpl: () => false,
     generateChannelScheduleImpl: async ({ channel: ch }) => ({ generatedAt: 'new', items: [], channelId: ch.id }),
     writeScheduleImpl: async (dataDir, channelId) => { writtenSchedules.push(channelId); },
+    readDurationCacheImpl: async () => ({}),
+    writeDurationCacheImpl: async () => {},
     scheduleDailyAtImpl: () => ({ cancel() {} }),
     createAppImpl: (args) => { createdAppArgs.push(args); return fakeApp(); }
   });
@@ -223,6 +235,8 @@ test('bootstrap calls app.listen before the startup schedule-regeneration pass r
       return { generatedAt: 'new', items: [], channelId: ch.id };
     },
     writeScheduleImpl: async () => {},
+    readDurationCacheImpl: async () => ({}),
+    writeDurationCacheImpl: async () => {},
     scheduleDailyAtImpl: () => ({ cancel() {} }),
     createAppImpl: () => ({
       listen: (port, cb) => { events.push('listen'); cb?.(); return { address: () => ({ port }) }; }
@@ -261,6 +275,8 @@ test('daily cron re-resolves a channel whose source is null and regenerates its 
     isScheduleFreshImpl: () => false,
     generateChannelScheduleImpl: async ({ channel: ch }) => ({ generatedAt: 'new', items: [], channelId: ch.id }),
     writeScheduleImpl: async (dataDir, channelId) => { writtenSchedules.push(channelId); },
+    readDurationCacheImpl: async () => ({}),
+    writeDurationCacheImpl: async () => {},
     scheduleDailyAtImpl: (refreshTime, cb) => { cronCallback = cb; return { cancel() {} }; },
     createAppImpl: () => fakeApp()
   });
@@ -289,6 +305,8 @@ test('daily cron invalidates the cached auth key when re-resolution discovery fa
     readScheduleImpl: async () => null,
     isScheduleFreshImpl: () => false,
     writeScheduleImpl: async () => {},
+    readDurationCacheImpl: async () => ({}),
+    writeDurationCacheImpl: async () => {},
     scheduleDailyAtImpl: (refreshTime, cb) => { cronCallback = cb; return { cancel() {} }; },
     createAppImpl: () => fakeApp()
   });
@@ -321,6 +339,8 @@ test('bootstrap wires a real channelActions instance that can add a channel and 
     isScheduleFreshImpl: () => false,
     generateChannelScheduleImpl: async ({ channel: ch }) => ({ generatedAt: 'new', items: [], channelId: ch.id }),
     writeScheduleImpl: async (dataDir, channelId) => { writtenSchedules.push(channelId); },
+    readDurationCacheImpl: async () => ({}),
+    writeDurationCacheImpl: async () => {},
     scheduleDailyAtImpl: () => ({ cancel() {} }),
     createAppImpl: () => fakeApp()
   });
@@ -364,6 +384,8 @@ test('bootstrap resolves an optional streamAddon into streamSource, independent 
     isScheduleFreshImpl: () => false,
     generateChannelScheduleImpl: async ({ channel: ch }) => ({ generatedAt: 'new', items: [], channelId: ch.id }),
     writeScheduleImpl: async () => {},
+    readDurationCacheImpl: async () => ({}),
+    writeDurationCacheImpl: async () => {},
     scheduleDailyAtImpl: () => ({ cancel() {} }),
     createAppImpl: (args) => { createdAppArgs.push(args); return fakeApp(); }
   });
@@ -393,6 +415,8 @@ test('bootstrap sets streamSource: null (not a crash) when streamAddon does not 
     isScheduleFreshImpl: () => false,
     generateChannelScheduleImpl: async ({ channel: ch }) => ({ generatedAt: 'new', items: [], channelId: ch.id }),
     writeScheduleImpl: async () => {},
+    readDurationCacheImpl: async () => ({}),
+    writeDurationCacheImpl: async () => {},
     scheduleDailyAtImpl: () => ({ cancel() {} }),
     createAppImpl: (args) => { createdAppArgs.push(args); return fakeApp(); }
   });
@@ -425,6 +449,8 @@ test('bootstrap resolves streamSource from the global default stream addon when 
     isScheduleFreshImpl: () => false,
     generateChannelScheduleImpl: async ({ channel: ch }) => ({ generatedAt: 'new', items: [], channelId: ch.id }),
     writeScheduleImpl: async () => {},
+    readDurationCacheImpl: async () => ({}),
+    writeDurationCacheImpl: async () => {},
     scheduleDailyAtImpl: () => ({ cancel() {} }),
     createAppImpl: (args) => { createdAppArgs.push(args); return fakeApp(); }
   });
@@ -458,6 +484,8 @@ test('bootstrap prefers a channel\'s own streamAddon over the global default', a
     isScheduleFreshImpl: () => false,
     generateChannelScheduleImpl: async ({ channel: ch }) => ({ generatedAt: 'new', items: [], channelId: ch.id }),
     writeScheduleImpl: async () => {},
+    readDurationCacheImpl: async () => ({}),
+    writeDurationCacheImpl: async () => {},
     scheduleDailyAtImpl: () => ({ cancel() {} }),
     createAppImpl: (args) => { createdAppArgs.push(args); return fakeApp(); }
   });
@@ -480,6 +508,8 @@ test('bootstrap wires a real settingsActions instance backed by the shared setti
     isScheduleFreshImpl: () => false,
     generateChannelScheduleImpl: async () => ({ generatedAt: 'new', items: [] }),
     writeScheduleImpl: async () => {},
+    readDurationCacheImpl: async () => ({}),
+    writeDurationCacheImpl: async () => {},
     scheduleDailyAtImpl: () => ({ cancel() {} }),
     createAppImpl: () => fakeApp()
   });
@@ -487,6 +517,39 @@ test('bootstrap wires a real settingsActions instance backed by the shared setti
   assert.ok(result.settingsActions);
   const settings = await result.settingsActions.getSettings();
   assert.deepEqual(settings, {});
+});
+
+test('regenerate reads the duration cache, passes it and realDebridApiKey to generateChannelScheduleImpl, and writes it back', async () => {
+  let capturedArgs = null;
+  let readCalledWith = null;
+  let writeCalledWith = null;
+  const fakeCache = { tt1: { ms: 1234, source: 'meta', resolvedAt: 'x' } };
+
+  const result = await bootstrap({
+    env: { DATA_DIR: '/tmp/unused', REALDEBRID_API_KEY: 'rd-key' },
+    readChannelsImpl: async () => [channel({ id: 'x', addon: 'a', catalog: 'c', enabled: true })],
+    writeChannelsImpl: async () => {},
+    readSettingsImpl: async () => ({}),
+    writeSettingsImpl: async () => {},
+    getAuthKeyImpl: async () => 'auth',
+    getInstalledAddonsImpl: async () => [{ id: 'a', transportUrl: 'https://a/manifest.json', manifest: { id: 'a', catalogs: [{ id: 'c', type: 'movie' }] } }],
+    findAddonByIdImpl: (addons, id) => addons.find((a) => a.id === id),
+    resolveChannelSourceImpl: () => ({ type: 'movie', catalogId: 'c' }),
+    generateChannelScheduleImpl: async (args) => { capturedArgs = args; return { generatedAt: 'new', items: [] }; },
+    readScheduleImpl: async () => null,
+    writeScheduleImpl: async () => {},
+    isScheduleFreshImpl: () => false,
+    scheduleDailyAtImpl: () => {},
+    createAppImpl: () => ({ listen: () => ({ address: () => ({ port: 0 }) }) }),
+    readDurationCacheImpl: async (dataDir) => { readCalledWith = dataDir; return fakeCache; },
+    writeDurationCacheImpl: async (dataDir, cache) => { writeCalledWith = { dataDir, cache }; }
+  });
+  await result.startupRegenerationDone;
+
+  assert.equal(readCalledWith, '/tmp/unused');
+  assert.equal(capturedArgs.realDebridApiKey, 'rd-key');
+  assert.equal(capturedArgs.durationCache, fakeCache);
+  assert.deepEqual(writeCalledWith, { dataDir: '/tmp/unused', cache: fakeCache });
 });
 
 test('regenerate sets channel.lastError on a schedule generation failure', async () => {
@@ -504,6 +567,8 @@ test('regenerate sets channel.lastError on a schedule generation failure', async
     isScheduleFreshImpl: () => false,
     generateChannelScheduleImpl: async () => { throw new Error('Unexpected token \'<\', "<!DOCTYPE "... is not valid JSON'); },
     writeScheduleImpl: async () => {},
+    readDurationCacheImpl: async () => ({}),
+    writeDurationCacheImpl: async () => {},
     scheduleDailyAtImpl: () => ({ cancel() {} }),
     createAppImpl: () => fakeApp()
   });
@@ -524,6 +589,8 @@ test('regenerate sets channel.lastError to "No resolved addon source" when the s
     readScheduleImpl: async () => null,
     isScheduleFreshImpl: () => false,
     writeScheduleImpl: async () => {},
+    readDurationCacheImpl: async () => ({}),
+    writeDurationCacheImpl: async () => {},
     scheduleDailyAtImpl: () => ({ cancel() {} }),
     createAppImpl: () => fakeApp()
   });
@@ -554,6 +621,8 @@ test('regenerate clears a previously-set lastError after a subsequent successful
       return { generatedAt: 'new', items: [], channelId: ch.id };
     },
     writeScheduleImpl: async () => {},
+    readDurationCacheImpl: async () => ({}),
+    writeDurationCacheImpl: async () => {},
     scheduleDailyAtImpl: (refreshTime, cb) => { cronCallback = cb; return { cancel() {} }; },
     createAppImpl: () => fakeApp()
   });
