@@ -107,3 +107,118 @@ test('treats zero-runtime metadata as invalid and falls back to defaultRuntimeMs
   // Verify the end time reflects the 60-minute default, not the 0 from metadata (which would cause infinite loop)
   assert.equal(schedule.items[0].end, '2026-07-22T01:00:00.000Z');
 });
+
+test('falls back to Cinemeta when meta has no runtime and the id looks like an IMDb id', async () => {
+  const addonClientImpl = makeAddonClientImpl({});
+  let cinemetaCalledWith = null;
+  const schedule = await generateChannelSchedule({
+    channel: { mode: 'random-start', catalog: 'x', minQuality: '480p', language: 'en' },
+    source: { transportUrl: 'https://addon/manifest.json', type: 'movie' },
+    addonClientImpl,
+    now: () => new Date('2026-07-22T00:00:00.000Z'),
+    targetWindowMs: 60 * 60 * 1000,
+    rng: () => 0, // starts at tt1
+    fetchCinemetaRuntimeImpl: async (type, id) => { cinemetaCalledWith = { type, id }; return 60 * 60 * 1000; }
+  });
+  assert.deepEqual(cinemetaCalledWith, { type: 'movie', id: 'tt1' });
+  assert.equal(schedule.items[0].end, '2026-07-22T01:00:00.000Z');
+});
+
+test('probes the resolved stream via ffprobe when meta and Cinemeta both fail', async () => {
+  const addonClientImpl = makeAddonClientImpl({});
+  let probedUrl = null;
+  const schedule = await generateChannelSchedule({
+    channel: { mode: 'random-start', catalog: 'x', minQuality: '480p', language: 'en', streamSource: { transportUrl: 'https://stream-addon/manifest.json' } },
+    source: { transportUrl: 'https://addon/manifest.json', type: 'movie' },
+    addonClientImpl,
+    now: () => new Date('2026-07-22T00:00:00.000Z'),
+    targetWindowMs: 45 * 60 * 1000,
+    rng: () => 0,
+    realDebridApiKey: 'rd-key',
+    fetchCinemetaRuntimeImpl: async () => null,
+    resolvePlayableUrlImpl: async () => 'https://direct/file.mkv',
+    probeDurationMsImpl: async (url) => { probedUrl = url; return 45 * 60 * 1000; }
+  });
+  assert.equal(probedUrl, 'https://direct/file.mkv');
+  assert.equal(schedule.items[0].end, '2026-07-22T00:45:00.000Z');
+});
+
+test('falls back to defaultRuntimeMs without caching when every rung of the chain fails', async () => {
+  const addonClientImpl = makeAddonClientImpl({});
+  const durationCache = {};
+  const schedule = await generateChannelSchedule({
+    channel: { mode: 'random-start', catalog: 'x', minQuality: '480p', language: 'en' },
+    source: { transportUrl: 'https://addon/manifest.json', type: 'movie' },
+    addonClientImpl,
+    now: () => new Date('2026-07-22T00:00:00.000Z'),
+    targetWindowMs: 90 * 60 * 1000,
+    defaultRuntimeMs: 90 * 60 * 1000,
+    rng: () => 0,
+    durationCache,
+    fetchCinemetaRuntimeImpl: async () => null,
+    resolvePlayableUrlImpl: async () => null
+  });
+  assert.equal(schedule.items[0].end, '2026-07-22T01:30:00.000Z');
+  assert.deepEqual(durationCache, {});
+});
+
+test('a disk-cache hit skips meta, Cinemeta, and probe entirely', async () => {
+  let metaCalled = false;
+  const addonClientImpl = {
+    fetchCatalog: async () => ITEMS,
+    fetchMeta: async () => { metaCalled = true; return null; }
+  };
+  let cinemetaCalled = false;
+  let probeCalled = false;
+  const durationCache = { tt1: { ms: 30 * 60 * 1000, source: 'probe', resolvedAt: '2026-07-01T00:00:00.000Z' } };
+  const schedule = await generateChannelSchedule({
+    channel: { mode: 'random-start', catalog: 'x', minQuality: '480p', language: 'en' },
+    source: { transportUrl: 'https://addon/manifest.json', type: 'movie' },
+    addonClientImpl,
+    now: () => new Date('2026-07-22T00:00:00.000Z'),
+    targetWindowMs: 30 * 60 * 1000,
+    rng: () => 0,
+    durationCache,
+    fetchCinemetaRuntimeImpl: async () => { cinemetaCalled = true; return null; },
+    resolvePlayableUrlImpl: async () => { probeCalled = true; return null; }
+  });
+  assert.equal(metaCalled, false);
+  assert.equal(cinemetaCalled, false);
+  assert.equal(probeCalled, false);
+  assert.equal(schedule.items[0].end, '2026-07-22T00:30:00.000Z');
+});
+
+test('caches a successfully-probed duration to the durationCache object', async () => {
+  const addonClientImpl = makeAddonClientImpl({});
+  const durationCache = {};
+  await generateChannelSchedule({
+    channel: { mode: 'random-start', catalog: 'x', minQuality: '480p', language: 'en' },
+    source: { transportUrl: 'https://addon/manifest.json', type: 'movie' },
+    addonClientImpl,
+    now: () => new Date('2026-07-22T00:00:00.000Z'),
+    targetWindowMs: 20 * 60 * 1000,
+    rng: () => 0,
+    durationCache,
+    fetchCinemetaRuntimeImpl: async () => null,
+    resolvePlayableUrlImpl: async () => 'https://direct/file.mkv',
+    probeDurationMsImpl: async () => 20 * 60 * 1000
+  });
+  assert.equal(durationCache.tt1.ms, 20 * 60 * 1000);
+  assert.equal(durationCache.tt1.source, 'probe');
+});
+
+test('a thrown error from probe resolution is caught and falls through to the default', async () => {
+  const addonClientImpl = makeAddonClientImpl({});
+  const schedule = await generateChannelSchedule({
+    channel: { mode: 'random-start', catalog: 'x', minQuality: '480p', language: 'en' },
+    source: { transportUrl: 'https://addon/manifest.json', type: 'movie' },
+    addonClientImpl,
+    now: () => new Date('2026-07-22T00:00:00.000Z'),
+    targetWindowMs: 90 * 60 * 1000,
+    defaultRuntimeMs: 90 * 60 * 1000,
+    rng: () => 0,
+    fetchCinemetaRuntimeImpl: async () => null,
+    resolvePlayableUrlImpl: async () => { throw new Error('addon unreachable'); }
+  });
+  assert.equal(schedule.items[0].end, '2026-07-22T01:30:00.000Z');
+});

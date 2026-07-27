@@ -1,6 +1,9 @@
 import * as addonClient from './addonClient.js';
 import { buildRandomStartLineup, buildRandomLineup } from './lineup.js';
 import { parseRuntimeMs } from './runtimeParse.js';
+import { resolvePlayableUrl } from './resolvePlayableUrl.js';
+import { probeDurationMs } from './durationProbe.js';
+import { fetchCinemetaRuntimeMs } from './cinemetaClient.js';
 
 function makeEntry(item, startMs, runtimeMs) {
   return {
@@ -19,7 +22,12 @@ export async function generateChannelSchedule({
   now = () => new Date(),
   targetWindowMs = 48 * 60 * 60 * 1000,
   defaultRuntimeMs = 90 * 60 * 1000,
-  rng = Math.random
+  rng = Math.random,
+  realDebridApiKey = null,
+  durationCache = {},
+  resolvePlayableUrlImpl = resolvePlayableUrl,
+  probeDurationMsImpl = probeDurationMs,
+  fetchCinemetaRuntimeImpl = fetchCinemetaRuntimeMs
 }) {
   const items = await addonClientImpl.fetchCatalog(source.transportUrl, source.type, channel.catalog);
   if (!items.length) {
@@ -27,11 +35,51 @@ export async function generateChannelSchedule({
   }
 
   const runtimeCache = new Map();
+
+  async function resolveDurationMs(item) {
+    const cached = durationCache[item.id];
+    if (cached && cached.ms) return cached.ms;
+
+    const meta = await addonClientImpl.fetchMeta(source.transportUrl, source.type, item.id);
+    const metaMs = parseRuntimeMs(meta?.runtime);
+    if (metaMs && metaMs > 0) {
+      durationCache[item.id] = { ms: metaMs, source: 'meta', resolvedAt: new Date().toISOString() };
+      return metaMs;
+    }
+
+    const cinemetaMs = await fetchCinemetaRuntimeImpl(source.type, item.id);
+    if (cinemetaMs && cinemetaMs > 0) {
+      durationCache[item.id] = { ms: cinemetaMs, source: 'cinemeta', resolvedAt: new Date().toISOString() };
+      return cinemetaMs;
+    }
+
+    const streamSource = channel.streamSource || source;
+    try {
+      const url = await resolvePlayableUrlImpl({
+        item,
+        type: source.type,
+        channel,
+        streamSource,
+        realDebridApiKey
+      });
+      if (url) {
+        const probedMs = await probeDurationMsImpl(url);
+        if (probedMs && probedMs > 0) {
+          durationCache[item.id] = { ms: probedMs, source: 'probe', resolvedAt: new Date().toISOString() };
+          return probedMs;
+        }
+      }
+    } catch (err) {
+      console.error(`Duration probe failed for item "${item.id}": ${err.message}`);
+    }
+
+    return null;
+  }
+
   async function getRuntimeMs(item) {
     if (runtimeCache.has(item.id)) return runtimeCache.get(item.id);
-    const meta = await addonClientImpl.fetchMeta(source.transportUrl, source.type, item.id);
-    const parsed = parseRuntimeMs(meta?.runtime);
-    const ms = parsed && parsed > 0 ? parsed : defaultRuntimeMs;
+    const resolved = await resolveDurationMs(item);
+    const ms = resolved && resolved > 0 ? resolved : defaultRuntimeMs;
     runtimeCache.set(item.id, ms);
     return ms;
   }
