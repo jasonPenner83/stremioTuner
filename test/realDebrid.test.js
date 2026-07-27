@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSeasonEpisode, pickTorrentFile, checkInstantAvailability, resolveStream } from '../src/realDebrid.js';
+import { parseSeasonEpisode, pickTorrentFile, checkInstantAvailability, resolveStream, MIN_PLAYABLE_FILE_BYTES } from '../src/realDebrid.js';
+
+test('MIN_PLAYABLE_FILE_BYTES is re-exported from the shared streamSizeCheck module with the same value', () => {
+  assert.equal(MIN_PLAYABLE_FILE_BYTES, 50 * 1024 * 1024);
+});
 
 test('parseSeasonEpisode extracts season/episode from a "tt123:S:E" id', () => {
   assert.deepEqual(parseSeasonEpisode('tt1234567:2:5'), { season: 2, episode: 5 });

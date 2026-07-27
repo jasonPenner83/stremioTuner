@@ -1,6 +1,8 @@
-const API_BASE = 'https://api.real-debrid.com/rest/1.0';
+import { MIN_PLAYABLE_FILE_BYTES } from './streamSizeCheck.js';
 
-export const MIN_PLAYABLE_FILE_BYTES = 50 * 1024 * 1024;
+export { MIN_PLAYABLE_FILE_BYTES };
+
+const API_BASE = 'https://api.real-debrid.com/rest/1.0';
 
 function authHeaders(apiKey) {
   return { Authorization: `Bearer ${apiKey}` };
