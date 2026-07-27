@@ -102,3 +102,26 @@ test('updateSettings does not touch channels or call discoverInstalledAddons whe
   assert.equal(discoverCalled, false);
   assert.equal(channels[0].streamSource, null);
 });
+
+test('listAddons returns degraded when Stremio discovery is unavailable', async () => {
+  const actions = createSettingsActions(baseDeps({ discoverInstalledAddons: async () => null }));
+  const result = await actions.listAddons();
+  assert.deepEqual(result, { degraded: true, addons: [] });
+});
+
+test('listAddons flattens every installed addon into id/name pairs, regardless of catalogs', async () => {
+  const actions = createSettingsActions(baseDeps({
+    discoverInstalledAddons: async () => [
+      { manifest: { id: 'org.torrentio', name: 'Torrentio', catalogs: [] }, transportUrl: 'https://torrentio/manifest.json' },
+      { manifest: { id: 'org.cinemeta', name: 'Cinemeta', catalogs: [{ id: 'top', type: 'movie' }] }, transportUrl: 'https://cinemeta/manifest.json' }
+    ]
+  }));
+  const result = await actions.listAddons();
+  assert.deepEqual(result, {
+    degraded: false,
+    addons: [
+      { id: 'org.torrentio', name: 'Torrentio' },
+      { id: 'org.cinemeta', name: 'Cinemeta' }
+    ]
+  });
+});

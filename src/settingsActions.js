@@ -41,5 +41,14 @@ export function createSettingsActions({
     return updated;
   }
 
-  return { getSettings, updateSettings };
+  async function listAddons() {
+    const installedAddons = await discoverInstalledAddons();
+    if (!installedAddons) return { degraded: true, addons: [] };
+    return {
+      degraded: false,
+      addons: installedAddons.map((entry) => ({ id: entry.manifest.id, name: entry.manifest.name }))
+    };
+  }
+
+  return { getSettings, updateSettings, listAddons };
 }
